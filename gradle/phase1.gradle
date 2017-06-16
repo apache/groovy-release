@@ -1,0 +1,296 @@
+import at.bxm.gradleplugins.svntools.api.SvnDepth
+import at.bxm.gradleplugins.svntools.tasks.SvnAdd
+import at.bxm.gradleplugins.svntools.tasks.SvnCheckout
+import at.bxm.gradleplugins.svntools.tasks.SvnCommit
+import at.bxm.gradleplugins.svntools.tasks.SvnVersion
+import groovyx.net.http.RESTClient
+import org.ajoberstar.grgit.Credentials
+import org.ajoberstar.grgit.Person
+import org.ajoberstar.grgit.util.JGitUtil
+import org.apache.tools.ant.taskdefs.condition.Os
+
+import static groovyx.net.http.ContentType.JSON
+
+buildscript {
+    repositories {
+        jcenter()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+
+    dependencies {
+        classpath "org.ajoberstar:grgit:${getProperty('version.grgit')}"
+        classpath "at.bxm.gradleplugins:gradle-svntools-plugin:${getProperty('version.svntools')}"
+        classpath "org.codehaus.groovy.modules.http-builder:http-builder:${getProperty('version.httpbuilder')}"
+        classpath "org.hidetake:gradle-ssh-plugin:${getProperty('version.sshplugin')}"
+        classpath "gradle.plugin.io.sdkman:gradle-sdkvendor-plugin:${getProperty('version.sdkmanplugin')}"
+    }
+}
+
+apply plugin: "at.bxm.svntools"
+
+svntools {
+    username = apacheUser
+    password = apachePassword
+}
+
+task checkout(dependsOn: assumesBranch) {
+    group = "Pre-vote phase"
+    description = "Checks out the Apache Groovy sources (assumes -Pbranch=branch_to_release)"
+    // fresh clone may be overkill but take safe option for now unless skipClone specified
+    doLast {
+        def grgit
+        if (project.hasProperty('skipClone')) {
+            grgit = grgitClass.open(dir: stagingDir)
+        } else {
+            println "Cloning $repoUri to $stagingDir. This may take a few minutes ..."
+            grgit = grgitClass.clone(dir: stagingDir, uri: repoUri, refToCheckout: branch)
+        }
+        grgit.checkout(branch: branch)
+        def id = grgit.head().abbreviatedId
+        def message = grgit.head().shortMessage
+        def dir = file(stagingDir)
+        assert !dir.isFile() && dir.listFiles()
+        println "Checked out: $grgit.branch.current.name @ $id ($message)"
+    }
+}
+
+task confirmVersion(dependsOn: [assumesPropsSet, checkout]) {
+    group = "Pre-vote phase"
+    description = "Confirm version to release (assumes -PreleaseVersion=version_to_release)"
+    doLast {
+        def propsFile = file("$stagingDir/gradle.properties")
+        def versionLines = propsFile.text.readLines().findAll { it.matches(/groovy.*Version.*/) }
+        def normalVersion = /(?ism).*$numVersion[a-zA-Z\-]*\.SNAPSHOT.*/
+        def bundleVersion = /(?ism).*$numVersion[a-zA-Z\-]*-SNAPSHOT.*/
+        versionLines.each {
+            assert it.matches(normalVersion) || it.matches(bundleVersion)
+        }
+    }
+}
+
+// use Exec rather than GradleBuild to avoid any issues between gradle versions
+task checkCompatibility(type: Exec, dependsOn: [assumesBranch, checkout]) {
+    workingDir stagingDir
+    def theArgs = []
+    if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+        theArgs += ['cmd', '/C', 'gradlew.bat']
+    } else {
+        theArgs << './gradlew'
+    }
+    theArgs << 'checkCompatibility'
+    commandLine theArgs
+}
+
+task jiraPrecheck(dependsOn: assumesRelVersion) {
+    doLast {
+        def jira = new RESTClient('https://issues.apache.org/jira/rest/api/2/')
+        def resp = jira.get(path: 'project/GROOVY/versions')
+        assert resp.status == 200 && resp.data
+        def versionFields = resp.data.find { it.name == relVersion }
+        assert versionFields, "Version $relVersion not found in Jira!"
+        assert !versionFields.released, "Version $relVersion already released!"
+        project.ext.versionId = versionFields.id
+        project.ext.projectId = versionFields.projectId
+
+        resp = jira.get(path: "version/$versionId/unresolvedIssueCount")
+        assert resp.status == 200 && resp.data
+        if (resp.data.issuesUnresolvedCount) {
+            logger.warn "Warning found $resp.data.issuesUnresolvedCount unresolved issues for version $relVersion"
+        }
+        resp = jira.get(path: "version/$versionId/relatedIssueCounts")
+        assert resp.status == 200 && resp.data
+        project.ext.fixCount = resp.data.issuesFixedCount
+    }
+}
+
+task createReleaseBranch(dependsOn: [assumesPropsSet, jiraPrecheck, confirmVersion]) {
+    group = "Pre-vote phase"
+    description = "Creates a release branch"
+    doLast {
+        def grgit = grgitClass.open(dir: stagingDir)
+        grgit.checkout(branch: "REL_BRANCH_$underVersion", startPoint: branch, createBranch: true)
+        println "Checked out: $grgit.branch.current.name"
+    }
+}
+
+task updateVersionProperties(dependsOn: [assumesPropsSet, createReleaseBranch]) {
+    group = "Pre-vote phase"
+    description = "Promotes versions to non SNAPSHOT in gradle.properties and commits the result"
+    doLast {
+        def propsFile = file("$stagingDir/gradle.properties")
+        def propsText = propsFile.text
+        propsText = propsText.replace(numVersion + '-SNAPSHOT', relVersion)
+        propsText = propsText.replace(numVersion + '.SNAPSHOT', relVersion)
+        propsFile.text = propsText
+        def grgit = grgitClass.open(dir: stagingDir)
+        grgit.add(patterns: ['gradle.properties'])
+        def commit = grgit.commit(message: "Release $relVersion: update versions")
+        println "@ $commit.abbreviatedId ($commit.shortMessage)"
+    }
+}
+[jiraPrecheck, createReleaseBranch, updateVersionProperties]*.onlyIf {
+    project.hasProperty('releaseBuild') && releaseBuild
+}
+
+// use Exec rather the GradleBuild to ensure we use the correct gradle version for the groovy version being built
+task buildAndUpload(type: Exec, dependsOn: [assumesPropsSet, updateVersionProperties, checkCompatibility]) {
+    group = "Pre-vote phase"
+    description = "Builds Apache Groovy and publishes the Maven artifacts to the staging repository on Bintray"
+    workingDir stagingDir
+    ext.theArgs = []
+    if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+        theArgs += ['cmd', '/C', 'gradlew.bat']
+    } else {
+        theArgs << './gradlew'
+    }
+    theArgs << "-PartifactoryContext=https://groovy.jfrog.io/groovy/"
+    theArgs << "-PartifactoryRepoKey=${releaseBuild ? 'libs-release-local' : 'libs-snapshot-local'}"
+    theArgs += ['install', 'dist', 'artifactoryPublish']
+    commandLine theArgs
+}
+
+task cleanSvnDevWorkspace(type: Delete, dependsOn: [assumesBranch, buildAndUpload]) {
+    delete devWorkspaceRoot
+}
+
+task prepareSvnDevWorkspace(type: SvnCheckout, dependsOn: [assumesBranch, cleanSvnDevWorkspace]) {
+    svnUrl = "https://dist.apache.org/repos/dist/dev/groovy"
+    workspaceDir = devWorkspaceRoot
+    depth = SvnDepth.FILES // slightly more efficient if we have two concurrent releases (e.g. 2.4.latest, 2.5.0)
+}
+
+task copySvnDistro(type: Copy, dependsOn: [assumesPropsSet, prepareSvnDevWorkspace]) {
+    description = "Creates the required tree structure for distribution"
+    from("$stagingDir/target/distributions")
+    into "$devWorkspace/distribution"
+    exclude 'apache-groovy-src-*'
+}
+
+task copySvnSources(type: Copy, dependsOn: [assumesPropsSet, prepareSvnDevWorkspace]) {
+    description = "Creates the required tree structure for sources"
+    from("$stagingDir/target/distributions")
+    into "$devWorkspace/sources"
+    include 'apache-groovy-src-*'
+}
+
+task createChecksums(dependsOn: [assumesPropsSet, copySvnDistro, copySvnSources]) {
+    group = "Pre-vote phase"
+    description = "Creates SHA-256 checksums for all artifacts"
+    doLast {
+        fileTree(devWorkspace).files.each { File f ->
+            if (f.name.toLowerCase().endsWith('.zip')) {
+                ant.checksum file: f, algorithm: 'SHA-256', fileext: '.sha256'
+            }
+        }
+    }
+}
+
+task addSvnDevFiles(type: SvnAdd, dependsOn: [assumesPropsSet, createChecksums]) {
+    description = "Adds the changed files to svn"
+    add devWorkspace
+    recursive true
+}
+
+task commitAddToDevSvn(type: SvnCommit, dependsOn: [assumesPropsSet, addSvnDevFiles]) {
+    source << devWorkspace
+    recursive = true
+    commitMessage = "New version $branch $relVersion added to staging area"
+}
+
+task checkDevWorkspaceVersion(type: SvnVersion, dependsOn: [assumesPropsSet, commitAddToDevSvn]) {
+    sourcePath = devWorkspace
+    doLast {
+        def f = new File(devWorkspace)
+        println "SvnVersion: build/${f.parentFile.name}/${f.name} at r" + svnVersion.maxRevisionNumber
+    }
+}
+
+task createAndPushTag(dependsOn: [assumesPropsSet, checkDevWorkspaceVersion]) {
+    group = "Pre-vote phase"
+    description = "Creates a release tag and pushes it to the Apache Git repository"
+    doLast {
+        def apacheCredentials = new Credentials(username: apacheUser, password: apachePassword)
+        def grgit = grgitClass.open(dir: stagingDir, creds: apacheCredentials)
+        def tagName = "GROOVY_$underVersion"
+        def tag = null
+        try {
+            tag = JGitUtil.resolveTag(grgit.repository, tagName)
+        } catch (ignore) {
+        }
+        if (project.hasProperty('skipTag')) {
+            assert tag, "Tag $tagName is supposed to exist but doesn't!"
+        } else {
+            assert !tag, "Tag $tagName already found!"
+            tag = grgit.tag.add(name: tagName,
+                    message: "Release Groovy $relVersion",
+                    tagger: new Person(apacheUser, apacheUser + '@apache.org')
+            )
+        }
+        project.ext.tagId = tag.commit.id
+        grgit.push(tags: true)
+    }
+}
+
+task releaseOnJira(dependsOn: [assumesRelVersion, jiraPrecheck, createAndPushTag]) {
+    group = "Pre-vote phase"
+    description = "Releases the version on JIRA"
+    doLast {
+        def jira = new RESTClient('https://issues.apache.org/jira/rest/api/2/')
+        jira.headers['Authorization'] = 'Basic ' + "$apacheUser:$apachePassword".getBytes('iso-8859-1').encodeBase64()
+        def resp = jira.put(
+                path: "version/$versionId",
+                body: /{ "released": true, "releaseDate": "$now" }/,
+                requestContentType: JSON
+        )
+        assert resp.status == 200
+    }
+}
+
+task prepareVoteThread(dependsOn: [assumesPropsSet, releaseOnJira]) {
+    group = "Pre-vote phase"
+    description = "Generates a [VOTE] thread to be tweaked and sent to the dev@ mailing list"
+    doLast {
+        println """
+Below is a template email to tweak and send to the dev@ mailing list as a [VOTE] thread.
+If the vote passes after 72h, proceed with phase2.
+If the vote fails or the release is cancelled, manually unrelease the version from Jira and start again.
+
+---------------- >8 -----------------
+
+Dear community,
+
+I am happy to start the VOTE thread for a Groovy $relVersion release!
+
+This release includes $fixCount bug fixes/improvements as outlined in the changelog:
+https://issues.apache.org/jira/secure/ReleaseNote.jspa?projectId=$projectId&version=$versionId
+
+Tag: $repoBase?p=groovy.git;a=tag;h=refs/tags/GROOVY_$underVersion
+Tag commit id: $tagId
+
+The artifacts to be voted on are located as follows (r$svnVersion.maxRevisionNumber).
+Source release: https://dist.apache.org/repos/dist/dev/groovy/$relVersion/sources
+Convenience binaries: https://dist.apache.org/repos/dist/dev/groovy/$relVersion/distribution
+
+Release artifacts are signed with a key from the following file:
+https://dist.apache.org/repos/dist/dev/groovy/KEYS
+
+Please vote on releasing this package as Apache Groovy $relVersion.
+
+The vote is open for the next 72 hours and passes if a majority of at least three +1 PMC votes are cast.
+
+[ ] +1 Release Apache Groovy $relVersion
+[ ]  0 I don't have a strong opinion about this, but I assume it's ok
+[ ] -1 Do not release Apache Groovy $relVersion because...
+
+Here is my vote:
+
++1 (binding)
+
+---------------- >8 -----------------
+"""
+    }
+}
+
+[createAndPushTag, releaseOnJira, prepareVoteThread]*.onlyIf { project.hasProperty('releaseBuild') && releaseBuild }

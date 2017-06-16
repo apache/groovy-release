@@ -1,0 +1,139 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
+/**
+ * Phase1 is invoked with:
+ *
+ *     gradlew -Pbranch=checkout_branch_name -PreleaseVersion=versionToRelease phase1
+ *
+ * e.g.:
+ *
+ *     gradlew -Pbranch=GROOVY_2_4_X -PreleaseVersion=2.4.8 phase1
+ *
+ * Assumes you have the following properties set up, e.g. in ~/.gradle/gradle.properties
+ * or using -PpropName=propValue on the command line:
+ *
+ *     signing.keyId=hexId
+ *     signing.password=your_s3cr3t_passphrase
+ *     signing.secretKeyRingFile=path_to_secring.gpg
+ *     apacheUser=your_username
+ *     apachePassword=your_password
+ *     artifactoryUser=artifactory_username
+ *     artifactoryPassword=artifactory_secret_password
+ *
+ * Phase 2 is invoked with:
+ *
+ *     gradlew -Pbranch=checkout_branch_name -PreleaseVersion=versionToRelease phase2
+ *
+ * e.g.:
+ *
+ *     gradlew -Pbranch=GROOVY_2_4_X -PreleaseVersion=2.4.8 phase2
+ *
+ * Assumes you have the following properties set up, e.g. in ~/.gradle/gradle.properties
+ * or using -PpropName=propValue on the command line:
+ *
+ *     ciserver.user=ci_login_user
+ *     ciserver.password=ci_login_password
+ *     githubUser=your_github_user
+ *     githubPassword=your_github_password
+ *     gvm.consumerKey=xxxxx
+ *     gvm.consumerToken=yyyyy
+ *     artifactoryUser=aaaa
+ *     artifactoryPassword=bbbb
+ *     centralUser=cccc
+ *     centralKey=dddd
+ *
+ * Using the -PsecurityFix property will add some additional placeholder text
+ * about a security fix to the email template.
+ *
+ * The script will try to be smart about making the new release the latest release version.
+ * It does this if the new release is a stable release and it looks like no other stable releases have
+ * a higher major.minor version. Use -PforceDefault and -PskipDefault to override.
+ *
+ * Assumptions:
+ * <ul>
+ * <li>The KEYS file is currently assumed to be updated manually outside this build script</li>
+ * </ul>
+ */
+
+buildscript {
+    repositories {
+        jcenter()
+        maven {
+            url "https://plugins.gradle.org/m2/"
+        }
+    }
+
+    dependencies {
+        classpath "org.ajoberstar:grgit:${getProperty('version.grgit')}"
+        classpath "at.bxm.gradleplugins:gradle-svntools-plugin:${getProperty('version.svntools')}"
+        classpath "org.codehaus.groovy.modules.http-builder:http-builder:${getProperty('version.httpbuilder')}"
+        classpath "org.hidetake:gradle-ssh-plugin:${getProperty('version.sshplugin')}"
+        classpath "gradle.plugin.io.sdkman:gradle-sdkvendor-plugin:${getProperty('version.sdkmanplugin')}"
+    }
+}
+
+ext {
+    grgitClass = org.ajoberstar.grgit.Grgit
+    repoBase = 'https://git1-us-west.apache.org/repos/asf'
+    repoUri = "$repoBase/groovy.git"
+    websiteRepo = 'https://github.com/groovy/groovy-website'
+    now = new Date().format('yyyy-MM-dd')
+    branch = project.findProperty('branch')
+    stagingDir = "$project.buildDir/staging-$branch/"
+    if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+        System.setProperty('https.protocols', 'TLSv1.1')
+    }
+    relVersion = project.findProperty('releaseVersion')
+    numVersion = relVersion?.find(/^[\d\.]+/)
+    newRelease = numVersion?.endsWith('.0')
+    underVersion = relVersion?.replace('.', '_')?.replace('-', '_')?.toUpperCase()
+    releaseBuild = !relVersion?.toLowerCase()?.contains('snapshot')
+    stableBuild = releaseBuild && !relVersion?.toLowerCase()?.contains('alpha') && !relVersion?.toLowerCase()?.contains('beta') && !relVersion?.toLowerCase()?.contains('rc')
+    if (stableBuild) {
+        def parts = relVersion?.split(/\./)
+        baseVersion = parts?.with{ "${it[0]}.${it[1]}.0"  }
+        nextVersion = parts?.with{ "${it[0]}.${it[1]}.${it[2].toInteger() + 1}"  }
+        if (!newRelease) {
+            prevVersion = parts?.with{ "${it[0]}.${it[1]}.${it[2].toInteger() - 1}"  }
+        }
+    }
+    devWorkspaceRoot = "$project.buildDir/svn-dev-workspace-$branch"
+    devWorkspace = "$devWorkspaceRoot/$relVersion"
+    releaseWorkspaceRoot = "$project.buildDir/svn-release-workspace-$branch"
+    releaseWorkspace = "$releaseWorkspaceRoot/$relVersion"
+    stagingWebsiteDir = "$project.buildDir/staging-website/"
+}
+
+task assumesBranch {
+    doLast {
+        assert branch, "Required property 'branch' not set"
+    }
+}
+
+task assumesRelVersion {
+    doLast {
+        assert relVersion, "Required property 'releaseVersion' not set"
+    }
+}
+
+task assumesPropsSet(dependsOn: [assumesBranch, assumesRelVersion])
+
+apply plugin: 'idea'
+apply plugin: 'groovy'
+apply from: 'gradle/phase1.gradle'
+apply from: 'gradle/phase2.gradle'
+apply from: 'gradle/adhoc.gradle'
+
+task phase1 {
+    dependsOn 'prepareVoteThread'
+    doLast {
+        println "Pre-vote phase"
+    }
+}
+
+task phase2 {
+    dependsOn 'announceReleaseOnSDKman'
+    doLast {
+        println "Post-vote phase"
+    }
+}
