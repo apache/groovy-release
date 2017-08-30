@@ -146,9 +146,16 @@ task buildAndUpload(type: Exec, dependsOn: [assumesPropsSet, updateVersionProper
     } else {
         theArgs << './gradlew'
     }
+    if (project.hasProperty('useAntlr4')) {
+        theArgs << "-PuseAntlr4=${getProperty('useAntlr4')}"
+    }
     theArgs << "-PartifactoryContext=https://groovy.jfrog.io/groovy/"
     theArgs << "-PartifactoryRepoKey=${releaseBuild ? 'libs-release-local' : 'libs-snapshot-local'}"
-    theArgs += ['install', 'dist', 'artifactoryPublish']
+    if (project.hasProperty('skipPublish')) {
+        theArgs += ['install', 'dist']
+    } else {
+        theArgs += ['install', 'dist', 'artifactoryPublish']
+    }
     commandLine theArgs
 }
 
