@@ -77,7 +77,7 @@ task checkCompatibility(type: Exec, dependsOn: [assumesBranch, checkout]) {
     if (Os.isFamily(Os.FAMILY_WINDOWS)) {
         theArgs += ['cmd', '/C', 'gradlew.bat']
     } else {
-        theArgs << './gradlew'
+        theArgs += ['sh', './gradlew']
     }
     theArgs << 'checkCompatibility'
     commandLine theArgs
@@ -144,7 +144,7 @@ task buildAndUpload(type: Exec, dependsOn: [assumesPropsSet, updateVersionProper
     if (Os.isFamily(Os.FAMILY_WINDOWS)) {
         theArgs += ['cmd', '/C', 'gradlew.bat']
     } else {
-        theArgs << './gradlew'
+        theArgs += ['sh', './gradlew']
     }
     if (project.hasProperty('useAntlr4')) {
         theArgs << "-PuseAntlr4=${getProperty('useAntlr4')}"
