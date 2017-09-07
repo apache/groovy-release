@@ -45,7 +45,7 @@ task websiteBuild(type: Exec, dependsOn: [assumesRelVersion, checkoutGroovyWebsi
     if (Os.isFamily(Os.FAMILY_WINDOWS)) {
         theArgs += ['cmd', '/C', 'gradlew.bat']
     } else {
-        theArgs << './gradlew'
+        theArgs += ['sh', './gradlew']
     }
     theArgs << 'webzip'
     commandLine theArgs
@@ -98,5 +98,22 @@ task unreleaseOnJira(dependsOn: jiraCheckPhase2) {
                 requestContentType: JSON
         )
         assert resp.status == 200
+    }
+}
+
+task showInfo(dependsOn: assumesPropsSet) {
+    doLast {
+        println "branch = $branch"
+        println "relVersion = $relVersion"
+        println "stagingDir = $stagingDir"
+        println "newRelease = $newRelease"
+        println "releaseBuild = $releaseBuild"
+        println "stableBuild = $stableBuild"
+        println "nextVersion = $nextVersion"
+        println "baseVersion = $baseVersion"
+        println "underVersion = $underVersion"
+        println "devWorkspace = $devWorkspace"
+        println "releaseWorkspace = $releaseWorkspace"
+        println "stagingWebsiteDir = $stagingWebsiteDir"
     }
 }

@@ -89,12 +89,15 @@ ext {
     underVersion = relVersion?.replace('.', '_')?.replace('-', '_')?.toUpperCase()
     releaseBuild = !relVersion?.toLowerCase()?.contains('snapshot')
     stableBuild = releaseBuild && !relVersion?.toLowerCase()?.contains('alpha') && !relVersion?.toLowerCase()?.contains('beta') && !relVersion?.toLowerCase()?.contains('rc')
-    if (stableBuild) {
+    if (releaseBuild) {
         def parts = relVersion?.split(/\./)
         baseVersion = parts?.with{ "${it[0]}.${it[1]}.0"  }
-        nextVersion = parts?.with{ "${it[0]}.${it[1]}.${it[2].toInteger() + 1}"  }
-        if (!newRelease) {
-            prevVersion = parts?.with{ "${it[0]}.${it[1]}.${it[2].toInteger() - 1}"  }
+        if (stableBuild) {
+            nextVersion = [parts[0], parts[1], parts[2].toInteger() + 1].join('.')
+        } else {
+            def subparts = parts[2]?.split(/-/)
+            def part2 = [subparts[0], subparts[1], subparts[2].toInteger() + 1].join('-')
+            nextVersion = [parts[0], parts[1], part2].join('.')
         }
     }
     devWorkspaceRoot = "$project.buildDir/svn-dev-workspace-$branch"

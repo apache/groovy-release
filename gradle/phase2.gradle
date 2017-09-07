@@ -129,7 +129,7 @@ task synchronizeWithMavenCentral(dependsOn: promoteOnBintray) {
     description = "Syncs with Maven Central/Sonatype"
     doLast {
         def bintray = new RESTClient('https://api.bintray.com/maven_central_sync/groovy/maven/')
-        bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayPassword".getBytes('iso-8859-1').encodeBase64()
+//        bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
         def body = /{
             "username" : "${project.findProperty('centralUser')}",
             "password" : "${project.findProperty('centralKey')}"
@@ -151,11 +151,11 @@ task publishZipsOnBintray(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
     description = "Publish distribution zips to bintray"
     doLast {
         def bintray = new RESTClient('https://api.bintray.com/content/groovy/maven/')
-        bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayPassword".getBytes('iso-8859-1').encodeBase64()
+        bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
         fileTree("$stagingDir/target/distributions").files.each { File f ->
             println "Uploading $f.name"
             def resp = bintray.put(
-                    path: "groovy/$version/${f.name}",
+                    path: "groovy/$relVersion/${f.name}",
                     body: f.bytes,
                     requestContentType: BINARY
             )
@@ -165,7 +165,6 @@ task publishZipsOnBintray(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
         // TODO automate release
     }
 }
-
 
 task cleanSvnReleaseWorkspace(type: Delete, dependsOn: [assumesRelVersion, synchronizeWithMavenCentral, publishZipsOnBintray]) {
     delete releaseWorkspaceRoot
@@ -246,11 +245,11 @@ task findGroovyVersions(dependsOn: checkoutGroovyWebsite) {
         def sitemapFile = file("$stagingWebsiteDir/site/src/site/sitemap.groovy")
         def matcher = sitemapFile.text =~ /(?ism).*groovyDocumentationVersions\(([^)]*)\).*/
         assert matcher[0]
-        rootProject.ext.versionsText = matcher[0][1]
+        def versionsText = matcher[0][1]
         def majorMinor = { String s -> s.split(/\./).with{ it[0].toInteger() * 100 + it[1].toInteger() } }
         def versions = Eval.me(versionsText)
         def relMajorMinor = majorMinor(relVersion)
-        rootProject.ext.foundNewer = versions.findAll{ !(it.contains('alpha') || it.contains('beta') || it.contains('rc')) }.collect{ majorMinor(it) }.any{ it > relMajorMinor }
+        def foundNewer = versions.findAll{ !(it.contains('alpha') || it.contains('beta') || it.contains('rc')) }.collect{ majorMinor(it) }.any{ it > relMajorMinor }
         rootProject.ext.newDefault = project.hasProperty('forceDefault') ||
                 (!project.hasProperty('skipDefault') && stableBuild && !foundNewer)
     }
@@ -286,7 +285,7 @@ task updateGroovySitemap(dependsOn: findGroovyVersions) {
         sitemapFile.text = sitemapText
     }
 }
-updateGroovySitemap.onlyIf{ stableBuild }
+updateGroovySitemap.onlyIf{ releaseBuild }
 
 task pushGroovyWebsite(dependsOn: updateGroovySitemap) {
     group = "Post-passed phase"
@@ -300,7 +299,7 @@ task pushGroovyWebsite(dependsOn: updateGroovySitemap) {
         grgit.push()
     }
 }
-pushGroovyWebsite.onlyIf{ stableBuild }
+pushGroovyWebsite.onlyIf{ releaseBuild }
 
 task waitForWebsitePublication(dependsOn: pushGroovyWebsite) {
     group = "Post-passed phase"
@@ -321,7 +320,7 @@ task waitForWebsitePublication(dependsOn: pushGroovyWebsite) {
         assert found, 'Timed out waiting for website to be published - please check manually'
     }
 }
-waitForWebsitePublication.onlyIf{ stableBuild }
+waitForWebsitePublication.onlyIf{ releaseBuild }
 
 task publishToSDKman(dependsOn: [waitForWebsitePublication, maybeUpdateDocumentationSymlink, sdkReleaseVersion]) {
     group = "Post-passed phase"
@@ -358,7 +357,6 @@ task bumpVersionInGit(dependsOn: createNextVersionInJira) {
     group = "Post-passed phase"
     description = "The version in the gradle.properties file in the branch repo should be bumped"
     doLast {
-        // TODO should this handle beta-1 => beta-2, rc-1 => rc-2 etc.
         def apacheCredentials = new Credentials(username: apacheUser, password: apachePassword)
         def grgit = grgitClass.open(dir: stagingDir, creds: apacheCredentials)
         grgit.checkout(branch: branch)
@@ -373,14 +371,17 @@ task bumpVersionInGit(dependsOn: createNextVersionInJira) {
         grgit.push()
     }
 }
+bumpVersionInGit.onlyIf{ stableBuild }
 
-task proposeAnnouncementEmail(dependsOn: [bumpVersionInGit, jiraCheckPhase2]) {
+task proposeAnnouncementEmail(dependsOn: [bumpVersionInGit, findGroovyVersions, jiraCheckPhase2]) {
     group = "Post-passed phase"
     description = "Generates an [ANNOUNCE] thread to be tweaked and sent to the dev@, user@ and announce@ mailing lists"
     doLast {
         def securityFix = project.hasProperty('securityFix')
         println """"
-Below is a template email to tweak and send to the dev@, user@ and announce@ mailing lists as an [ANNOUNCE] thread.
+Below is a template email to tweak and send to the normaly mailing lists including
+dev@groovy.apache.org, users@groovy.apache.org and announce@apache.org mailing lists
+as an [ANNOUNCE] thread. This should be sent using an Apache email from address.
 
 ---------------- >8 -----------------
 
