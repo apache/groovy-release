@@ -155,7 +155,7 @@ task publishZipsOnBintray(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
         fileTree("$stagingDir/target/distributions").files.each { File f ->
             println "Uploading $f.name"
             def resp = bintray.put(
-                    path: "groovy/$version/${f.name}",
+                    path: "groovy/$releaseVersion/${f.name}",
                     body: f.bytes,
                     requestContentType: BINARY
             )
