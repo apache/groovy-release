@@ -129,7 +129,7 @@ task synchronizeWithMavenCentral(dependsOn: promoteOnBintray) {
     description = "Syncs with Maven Central/Sonatype"
     doLast {
         def bintray = new RESTClient('https://api.bintray.com/maven_central_sync/groovy/maven/')
-//        bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
+        bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
         def body = /{
             "username" : "${project.findProperty('centralUser')}",
             "password" : "${project.findProperty('centralKey')}"
@@ -245,7 +245,7 @@ task findGroovyVersions(dependsOn: checkoutGroovyWebsite) {
         def sitemapFile = file("$stagingWebsiteDir/site/src/site/sitemap.groovy")
         def matcher = sitemapFile.text =~ /(?ism).*groovyDocumentationVersions\(([^)]*)\).*/
         assert matcher[0]
-        def versionsText = matcher[0][1]
+        rootProject.ext.versionsText = matcher[0][1]
         def majorMinor = { String s -> s.split(/\./).with{ it[0].toInteger() * 100 + it[1].toInteger() } }
         def versions = Eval.me(versionsText)
         def relMajorMinor = majorMinor(relVersion)
