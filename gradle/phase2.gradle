@@ -223,6 +223,7 @@ task uploadDocumentationToGroovyWebsite(dependsOn: uploadToApacheReleaseServer) 
                 execute "rm -rf /var/www/docs/docs/groovy-${relVersion}/"
                 execute "unzip -d /var/www/docs/docs/ /var/www/docs/docs/apache-groovy-docs-${relVersion}.zip"
                 execute "chgrp -R teamcity /var/www/docs/docs/groovy-${relVersion}/"
+//                execute "chown -R teamcity /var/www/docs/docs/groovy-${relVersion}/"
                 execute "rm /var/www/docs/docs/apache-groovy-docs-${relVersion}.zip"
             }
         }
@@ -279,7 +280,7 @@ task updateGroovySitemap(dependsOn: findGroovyVersions) {
         def sitemapFile = file("$stagingWebsiteDir/site/src/site/sitemap.groovy")
         def sitemapText = sitemapFile.text
         def newText = newRelease ? versionsText.replaceFirst(/(?sm)'\s*\]/, "',\n            '$relVersion'\n    \\]")
-                : versionsText.replaceFirst(/(?sm)(.*)('$baseVersion'[',. 0-9]*)/, "\$1\$2, '$relVersion'")
+                : versionsText.replaceFirst(/(?sm)(.*)('$baseVersion'[',. 0-9]*)/, "\$1\$2 '$relVersion',")
         sitemapText = sitemapText.replace(versionsText, newText)
         // TODO add download distributions section ...
         sitemapFile.text = sitemapText
