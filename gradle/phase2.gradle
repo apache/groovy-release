@@ -421,14 +421,17 @@ Details can be found on http://groovy-lang.org/security.html
 This release includes $fixCount bug fixes/improvements as outlined in the changelog:
 https://issues.apache.org/jira/secure/ReleaseNote.jspa?projectId=$projectId&version=$versionId
 
-Sources can be downloaded from: http://www.groovy-lang.org/download.html
-Convenience binaries, SDK and documentation can be found at: http://www.groovy-lang.org/download.html
-Jars are also available within the major binary repositories.
-We would like to thank all people who contributed to this release.
+Sources, convenience binaries, downloadable documentation and an SDK
+bundle can be found at: http://www.groovy-lang.org/download.html
+We recommend you verify your installation using the information on that page.
 
-We welcome your help and feedback. For more information on how to
-report problems, and to get involved, visit the project website at
-https://groovy.apache.org/
+Jars are also available within the major binary repositories.
+
+We welcome your help and feedback and in particular want
+to thank everyone who contributed to this release.
+
+For more information on how to report problems, and to get involved,
+visit the project website at https://groovy.apache.org/
 
 Best regards,
 
