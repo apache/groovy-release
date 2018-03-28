@@ -128,6 +128,11 @@ task synchronizeWithMavenCentral(dependsOn: promoteOnBintray) {
     group = "Post-passed phase"
     description = "Syncs with Maven Central/Sonatype"
     doLast {
+        println """
+Synchronizing with Maven central. This may take a few minutes ...
+If this fails, log on to http://oss.sonatype.org/ using the centralUser credentials
+and progress through process manually -> Close -> Publish ... under staging repositories
+"""
         def bintray = new RESTClient('https://api.bintray.com/maven_central_sync/groovy/maven/')
         bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
         def body = /{
@@ -210,6 +215,12 @@ task uploadToApacheReleaseServer(dependsOn: [commitDeleteFromDevSvn, commitAddTo
     // svntools has no move so add and delete explicitly
     group = "Post-passed phase"
     description = "Moves the artifacts from the DEV svn repo to the RELEASE svn repo"
+    doLast {
+        println """
+Once the release has been announced and mirrors have the latest artifacts, please remove old versions manually
+from ASF svn servers - they will remain automatically on the archive servers.
+"""
+    }
 }
 
 task uploadDocumentationToGroovyWebsite(dependsOn: uploadToApacheReleaseServer) {
@@ -328,6 +339,7 @@ task publishToSDKman(dependsOn: [waitForWebsitePublication, maybeUpdateDocumenta
     description = "Publishes the release on SDKman"
 }
 
+sdkDefaultVersion.dependsOn findGroovyVersions
 task makeDefaultOnSDKman(dependsOn: [publishToSDKman, sdkDefaultVersion]) {
     group = "Post-passed phase"
     description = "Make it the default version on SDKman"
