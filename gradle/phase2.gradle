@@ -223,7 +223,7 @@ from ASF svn servers - they will remain automatically on the archive servers.
     }
 }
 
-task uploadDocumentationToGroovyWebsite(dependsOn: uploadToApacheReleaseServer) {
+task uploadDocumentationToGroovyWebsite() {
     group = "Post-passed phase"
     description = "Uploads the documentation to the Groovy website server"
     doLast {
@@ -334,7 +334,7 @@ task waitForWebsitePublication(dependsOn: pushGroovyWebsite) {
 }
 waitForWebsitePublication.onlyIf{ releaseBuild }
 
-task publishToSDKman(dependsOn: [waitForWebsitePublication, maybeUpdateDocumentationSymlink, sdkReleaseVersion]) {
+task publishToSDKman(dependsOn: [waitForWebsitePublication, maybeUpdateDocumentationSymlink, uploadToApacheReleaseServer, sdkReleaseVersion]) {
     group = "Post-passed phase"
     description = "Publishes the release on SDKman"
 }
