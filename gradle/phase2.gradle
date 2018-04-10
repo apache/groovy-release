@@ -233,6 +233,7 @@ task uploadDocumentationToGroovyWebsite() {
                 put from: "$stagingDir/target/distributions/apache-groovy-docs-${relVersion}.zip", into: '/var/www/docs/docs'
                 execute "rm -rf /var/www/docs/docs/groovy-${relVersion}/"
                 execute "unzip -d /var/www/docs/docs/ /var/www/docs/docs/apache-groovy-docs-${relVersion}.zip"
+                execute "chmod 664 /var/www/docs/docs/apache-groovy-docs-${relVersion}.zip"
                 execute "chgrp -R teamcity /var/www/docs/docs/groovy-${relVersion}/"
 //                execute "chown -R teamcity /var/www/docs/docs/groovy-${relVersion}/"
                 execute "rm /var/www/docs/docs/apache-groovy-docs-${relVersion}.zip"
