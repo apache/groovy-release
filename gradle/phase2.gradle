@@ -171,7 +171,7 @@ task publishZipsOnBintray(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
     }
 }
 
-task cleanSvnReleaseWorkspace(type: Delete, dependsOn: [assumesRelVersion, synchronizeWithMavenCentral, publishZipsOnBintray]) {
+task cleanSvnReleaseWorkspace(type: Delete, dependsOn: assumesRelVersion) {
     delete releaseWorkspaceRoot
 }
 
@@ -287,9 +287,9 @@ maybeUpdateDocumentationSymlink.onlyIf{ newDefault }
 
 task updateGroovySitemap(dependsOn: findGroovyVersions) {
     group = "Post-passed phase"
-    description = "Updates sitemap.groovy to include the newly released version and commits the result"
+    description = "Updates sitemap-user.groovy to include the newly released version and commits the result"
     doLast {
-        def sitemapFile = file("$stagingWebsiteDir/site/src/site/sitemap.groovy")
+        def sitemapFile = file("$stagingWebsiteDir/site/src/site/sitemap-user.groovy")
         def sitemapText = sitemapFile.text
         def newText = newRelease ? versionsText.replaceFirst(/(?sm)'\s*\]/, "',\n            '$relVersion'\n    \\]")
                 : versionsText.replaceFirst(/(?sm)(.*)('$baseVersion'[',. 0-9]*)/, "\$1\$2 '$relVersion',")
@@ -335,7 +335,7 @@ task waitForWebsitePublication(dependsOn: pushGroovyWebsite) {
 }
 waitForWebsitePublication.onlyIf{ releaseBuild }
 
-task publishToSDKman(dependsOn: [waitForWebsitePublication, maybeUpdateDocumentationSymlink, uploadToApacheReleaseServer, sdkReleaseVersion]) {
+task publishToSDKman(dependsOn: [waitForWebsitePublication, maybeUpdateDocumentationSymlink, synchronizeWithMavenCentral, publishZipsOnBintray, uploadToApacheReleaseServer, sdkReleaseVersion]) {
     group = "Post-passed phase"
     description = "Publishes the release on SDKman"
 }

@@ -90,7 +90,9 @@ task jiraPrecheck(dependsOn: assumesRelVersion) {
         assert resp.status == 200 && resp.data
         def versionFields = resp.data.find { it.name == relVersion }
         assert versionFields, "Version $relVersion not found in Jira!"
-        assert !versionFields.released, "Version $relVersion already released!"
+        if (!project.hasProperty('skipJiraReleaseCheck')) {
+            assert !versionFields.released, "Version $relVersion already released!"
+        }
         project.ext.versionId = versionFields.id
         project.ext.projectId = versionFields.projectId
 
@@ -227,7 +229,7 @@ task createAndPushTag(dependsOn: [assumesPropsSet, checkDevWorkspaceVersion]) {
             tag = JGitUtil.resolveTag(grgit.repository, tagName)
         } catch (ignore) {
         }
-        if (project.hasProperty('skipTag')) {
+        if (project.hasProperty('skipSvnTag')) {
             assert tag, "Tag $tagName is supposed to exist but doesn't!"
         } else {
             assert !tag, "Tag $tagName already found!"
@@ -237,7 +239,9 @@ task createAndPushTag(dependsOn: [assumesPropsSet, checkDevWorkspaceVersion]) {
             )
         }
         project.ext.tagId = tag.commit.id
-        grgit.push(tags: true)
+        if (!project.hasProperty('skipSvnPush')) {
+            grgit.push(tags: true)
+        }
     }
 }
 
