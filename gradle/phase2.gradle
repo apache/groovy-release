@@ -255,7 +255,7 @@ task checkoutGroovyWebsite(dependsOn: uploadDocumentationToGroovyWebsite) {
 
 task findGroovyVersions(dependsOn: checkoutGroovyWebsite) {
     doLast {
-        def sitemapFile = file("$stagingWebsiteDir/site/src/site/sitemap.groovy")
+        def sitemapFile = file("$stagingWebsiteDir/site/src/site/sitemap-user.groovy")
         def matcher = sitemapFile.text =~ /(?ism).*groovyDocumentationVersions\(([^)]*)\).*/
         assert matcher[0]
         rootProject.ext.versionsText = matcher[0][1]
