@@ -76,7 +76,7 @@ ext {
     grgitClass = org.ajoberstar.grgit.Grgit
     repoBase = 'https://git1-us-west.apache.org/repos/asf'
     repoUri = "$repoBase/groovy.git"
-    websiteRepo = 'https://github.com/groovy/groovy-website'
+    websiteRepo = 'https://gitbox.apache.org/repos/asf/groovy-website.git'
     now = new Date().format('yyyy-MM-dd')
     branch = project.findProperty('branch')
     stagingDir = "$project.buildDir/staging-$branch/"
