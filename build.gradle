@@ -80,9 +80,9 @@ ext {
     now = new Date().format('yyyy-MM-dd')
     branch = project.findProperty('branch')
     stagingDir = "$project.buildDir/staging-$branch/"
-    if (Os.isFamily(Os.FAMILY_WINDOWS)) {
-        System.setProperty('https.protocols', 'TLSv1.1')
-    }
+//    if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+//        System.setProperty('https.protocols', 'TLSv1.2')
+//    }
     relVersion = project.findProperty('releaseVersion')
     numVersion = relVersion?.find(/^[\d\.]+/)
     newRelease = numVersion?.endsWith('.0')
