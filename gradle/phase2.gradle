@@ -304,7 +304,8 @@ task pushGroovyWebsite(dependsOn: updateGroovySitemap) {
     group = "Post-passed phase"
     description = "Pushes the Groovy website so that the new website is published"
     doLast {
-        def githubCredentials = new Credentials(username: githubUser, password: githubPassword)
+//        def githubCredentials = new Credentials(username: githubUser, password: githubPassword)
+        def githubCredentials = new Credentials(githubUser, githubPassword)
         def grgit = grgitClass.open(dir: stagingWebsiteDir, creds: githubCredentials)
         grgit.add(patterns: ['sitemap.groovy'])
         def commit = grgit.commit(message: "Release $relVersion: update sitemap")
@@ -371,7 +372,8 @@ task bumpVersionInGit(dependsOn: createNextVersionInJira) {
     group = "Post-passed phase"
     description = "The version in the gradle.properties file in the branch repo should be bumped"
     doLast {
-        def apacheCredentials = new Credentials(username: apacheUser, password: apachePassword)
+//        def apacheCredentials = new Credentials(username: apacheUser, password: apachePassword)
+        def apacheCredentials = new Credentials(apacheUser, apachePassword)
         def grgit = grgitClass.open(dir: stagingDir, creds: apacheCredentials)
         grgit.checkout(branch: branch)
         def propsFile = file("$stagingDir/gradle.properties")

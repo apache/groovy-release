@@ -74,7 +74,7 @@ buildscript {
 
 ext {
     grgitClass = org.ajoberstar.grgit.Grgit
-    repoBase = 'https://git1-us-west.apache.org/repos/asf'
+    repoBase = 'https://gitbox.apache.org/repos/asf'
     repoUri = "$repoBase/groovy.git"
     websiteRepo = 'https://gitbox.apache.org/repos/asf/groovy-website.git'
     now = new Date().format('yyyy-MM-dd')

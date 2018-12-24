@@ -221,7 +221,8 @@ task createAndPushTag(dependsOn: [assumesPropsSet, checkDevWorkspaceVersion]) {
     group = "Pre-vote phase"
     description = "Creates a release tag and pushes it to the Apache Git repository"
     doLast {
-        def apacheCredentials = new Credentials(username: apacheUser, password: apachePassword)
+//        def apacheCredentials = new Credentials(username: apacheUser, password: apachePassword)
+        def apacheCredentials = new Credentials(apacheUser, apachePassword)
         def grgit = grgitClass.open(dir: stagingDir, creds: apacheCredentials)
         def tagName = "GROOVY_$underVersion"
         def tag = null
