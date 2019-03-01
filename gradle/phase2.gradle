@@ -56,7 +56,7 @@ sdkman {
     consumerToken = findProperty('gvm.consumerPassword')
     candidate = "groovy"
     version = "$relVersion"
-    url = "http://dl.bintray.com/groovy/maven/apache-groovy-sdk-${relVersion}.zip"
+    url = "https://dl.bintray.com/groovy/maven/apache-groovy-sdk-${relVersion}.zip"
     hashtag = "#groovylang"
 }
 
@@ -323,7 +323,7 @@ task waitForWebsitePublication(dependsOn: pushGroovyWebsite) {
         def delay = 30000 // 1/2 a minute
         def numTries = 60 // wait for up to 30 mins
         while (!found && numTries-- > 0) {
-            def groovysite = new RESTClient('http://groovy-lang.org/')
+            def groovysite = new RESTClient('https://groovy-lang.org/')
             def resp = groovysite.get(path: "changelogs/changelog-${relVersion}.html")
             if (resp.status == 200 && !resp.data.text().contains('Oops!')) {
                 found = true
@@ -405,7 +405,7 @@ Dear community,
 
 The Apache Groovy team is pleased to announce version $relVersion of Apache Groovy.
 Apache Groovy is a multi-faceted programming language for the JVM.
-Further details can be found at the http://groovy.apache.org website.
+Further details can be found at the https://groovy.apache.org website.
 
 ${ stableBuild ?
     (newRelease ?
@@ -419,13 +419,13 @@ We greatly appreciate any feedback you can give us when using this version.'''
 }
 ${securityFix ? '''
 This release contains critical security fixes.
-Details can be found on http://groovy-lang.org/security.html
+Details can be found on https://groovy-lang.org/security.html
 ''' : '' }
 This release includes $fixCount bug fixes/improvements as outlined in the changelog:
 https://issues.apache.org/jira/secure/ReleaseNote.jspa?projectId=$projectId&version=$versionId
 
 Sources, convenience binaries, downloadable documentation and an SDK
-bundle can be found at: http://www.groovy-lang.org/download.html
+bundle can be found at: https://groovy.apache.org/download.html
 We recommend you verify your installation using the information on that page.
 
 Jars are also available within the major binary repositories.
