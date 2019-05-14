@@ -130,7 +130,7 @@ task synchronizeWithMavenCentral(dependsOn: promoteOnBintray) {
     doLast {
         println """
 Synchronizing with Maven central. This may take a few minutes ...
-If this fails, log on to http://oss.sonatype.org/ using the centralUser credentials
+If this fails, log on to https://oss.sonatype.org/ using the centralUser credentials
 and progress through process manually -> Close -> Publish ... under staging repositories
 """
         def bintray = new RESTClient('https://api.bintray.com/maven_central_sync/groovy/maven/')
@@ -349,7 +349,7 @@ task makeDefaultOnSDKman(dependsOn: [publishToSDKman, sdkDefaultVersion]) {
 makeDefaultOnSDKman.onlyIf{ rootProject.ext.newDefault }
 sdkDefaultVersion.onlyIf{ rootProject.ext.newDefault }
 
-task createNextVersionInJira(dependsOn: [makeDefaultOnSDKman, jiraCheckPhase2]) {
+task createNextVersionInJira(dependsOn: [jiraCheckPhase2]) {
     group = "Post-passed phase"
     description = "Make sure that Jira is ready for the next version on this branch"
     doLast {
@@ -368,7 +368,7 @@ task createNextVersionInJira(dependsOn: [makeDefaultOnSDKman, jiraCheckPhase2]) 
     }
 }
 
-task bumpVersionInGit(dependsOn: createNextVersionInJira) {
+task bumpVersionInGit(dependsOn: [findGroovyVersions]) {
     group = "Post-passed phase"
     description = "The version in the gradle.properties file in the branch repo should be bumped"
     doLast {
@@ -389,7 +389,13 @@ task bumpVersionInGit(dependsOn: createNextVersionInJira) {
 }
 bumpVersionInGit.onlyIf{ stableBuild }
 
-task proposeAnnouncementEmail(dependsOn: [bumpVersionInGit, findGroovyVersions, jiraCheckPhase2]) {
+task gitTasks(dependsOn: [bumpVersionInGit, jiraCheckPhase2]) { }
+
+task jiraTasks(dependsOn: [findGroovyVersions, createNextVersionInJira]) { }
+
+task sdkmanTasks(dependsOn: [jiraCheckPhase2, findGroovyVersions, makeDefaultOnSDKman]) {}
+
+task proposeAnnouncementEmail(dependsOn: [gitTasks, jiraTasks, sdkmanTasks, findGroovyVersions]) {
     group = "Post-passed phase"
     description = "Generates an [ANNOUNCE] thread to be tweaked and sent to the dev@, user@ and announce@ mailing lists"
     doLast {
