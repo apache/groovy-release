@@ -47,20 +47,21 @@ task websiteBuild(type: Exec, dependsOn: [assumesRelVersion, checkoutGroovyWebsi
     } else {
         theArgs += ['sh', './gradlew']
     }
-    theArgs << 'webzip'
+    theArgs << ':site-dev:webzip'
+    theArgs << ':site-user:webzip'
     commandLine theArgs
 }
 
 // NOTE: not normally needed as part of a release since the CI server does
 // this automatically upon commit of the changed website
-task websitePublish(dependsOn: websiteBuild) {
+task websitePublishUserSite(dependsOn: websiteBuild) {
     description = "Manual upload of documentation to the Groovy website server"
     doLast {
         println "WARNING: result might be overridden by CI server"
         ssh.run {
             session(remotes.ciServer) {
                 execute 'uname -a'
-                file("$stagingWebsiteDir/site/build/site").listFiles().each {
+                file("$stagingWebsiteDir/site-user/build/site").listFiles().each {
                     put from: it, into: '/var/www/beta'
                 }
 //                execute 'chgrp -R teamcity /var/www/beta'
