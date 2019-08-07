@@ -124,6 +124,9 @@ task promoteOnBintray(dependsOn: jiraCheckPhase2) {
     }
 }
 
+sdkReleaseVersion.dependsOn promoteOnBintray
+
+
 task synchronizeWithMavenCentral(dependsOn: promoteOnBintray) {
     group = "Post-passed phase"
     description = "Syncs with Maven Central/Sonatype"
