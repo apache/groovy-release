@@ -123,9 +123,9 @@ task updateVersionProperties(dependsOn: [assumesPropsSet, createReleaseBranch]) 
     doLast {
         def propsFile = file("$stagingDir/gradle.properties")
         def propsText = propsFile.text
-        // TODO tweak for alpha/beta/rc for OSGi numbering with dot
         propsText = propsText.replace(numVersion + '-SNAPSHOT', relVersion)
-        propsText = propsText.replace(numVersion + '.SNAPSHOT', relVersion)
+        def osgiVersion = relVersion.replaceFirst("-", ".")
+        propsText = propsText.replace(numVersion + '.SNAPSHOT', osgiVersion)
         propsFile.text = propsText
         def grgit = grgitClass.open(dir: stagingDir)
         grgit.add(patterns: ['gradle.properties'])
