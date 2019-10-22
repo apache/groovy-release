@@ -72,7 +72,8 @@ task websitePublishUserSite(dependsOn: websiteBuild) {
 
 task untagVersion(dependsOn: assumesPropsSet) {
     doLast {
-        def apacheCredentials = new Credentials(username: apacheUser, password: apachePassword)
+        def apacheCredentials = new Credentials(apacheUser, apachePassword)
+//        def apacheCredentials = new Credentials(username: apacheUser, password: apachePassword)
         def grgit = grgitClass.open(dir: stagingDir, creds: apacheCredentials)
         def tagName = "GROOVY_$underVersion"
         def tag = null
