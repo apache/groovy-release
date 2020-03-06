@@ -151,7 +151,8 @@ task buildAndUpload(type: Exec, dependsOn: [assumesPropsSet, updateVersionProper
     if (project.hasProperty('useAntlr4')) {
         theArgs << "-PuseAntlr4=${getProperty('useAntlr4')}"
     }
-    theArgs << "-PartifactoryContext=https://groovy.jfrog.io/groovy/"
+    theArgs << '--no-build-cache'
+    theArgs << "-PartifactoryContext=https://groovy.jfrog.io/groovy/" // apache-groovy for Groovy 4
     theArgs << "-PartifactoryRepoKey=${releaseBuild ? 'libs-release-local' : 'libs-snapshot-local'}"
     if (project.hasProperty('skipPublish')) {
         theArgs += ['install', 'dist']
