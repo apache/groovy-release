@@ -4,6 +4,7 @@ import at.bxm.gradleplugins.svntools.tasks.SvnCheckout
 import at.bxm.gradleplugins.svntools.tasks.SvnCommit
 import at.bxm.gradleplugins.svntools.tasks.SvnDelete
 import groovyx.net.http.RESTClient
+import groovyx.net.http.HttpResponseException
 import org.ajoberstar.grgit.Credentials
 
 import static groovyx.net.http.ContentType.*
@@ -98,7 +99,8 @@ task promoteOnBintray(dependsOn: jiraCheckPhase2) {
         def build = builds.find {
             resp = artifactory.get(path: 'api/build/groovy/' + it.uri, contentType: JSON)
             assert resp.status == 200
-            def coreModuleId = resp.data.buildInfo.modules*.id.find{ it.startsWith('org.codehaus.groovy:groovy:') }
+//            def coreModuleId = resp.data.buildInfo.modules*.id.find{ it.startsWith('org.codehaus.groovy:groovy:') } // apache
+            def coreModuleId = resp.data.buildInfo.modules*.id.find{ it.startsWith('org.apache.groovy:groovy:') } // apache
             def found = coreModuleId?.endsWith(':' + relVersion)
             println "${found ? 'FOUND' : 'SKIPPING'} $coreModuleId @ ${it.uri}"
             found
@@ -124,8 +126,29 @@ task promoteOnBintray(dependsOn: jiraCheckPhase2) {
     }
 }
 
-sdkReleaseVersion.dependsOn promoteOnBintray
-
+task waitForBintrayPublication(dependsOn: [promoteOnBintray]) {
+    group = "Post-passed phase"
+    description = "Polls the Bintray website to check if it is released"
+    doLast {
+        def found = false
+        def delay = 30000 // 1/2 a minute
+        def numTries = 60 // wait for up to 30 mins
+        while (!found && numTries-- > 0) {
+            def bintraysite = new RESTClient('https://dl.bintray.com/')
+            def resp = null
+            try {
+                resp = bintraysite.head(path: "groovy/maven/apache-groovy-sdk-${relVersion}.zip")
+            } catch(HttpResponseException ignore) {}
+            if (resp?.status == 200) {
+                found = true
+            } else {
+                sleep delay
+            }
+        }
+        assert found, 'Timed out waiting for bintray publish/sync - please check manually'
+    }
+}
+sdkReleaseVersion.dependsOn waitForBintrayPublication
 
 task synchronizeWithMavenCentral(dependsOn: promoteOnBintray) {
     group = "Post-passed phase"
@@ -136,14 +159,14 @@ Synchronizing with Maven central. This may take a few minutes ...
 If this fails, log on to https://oss.sonatype.org/ using the centralUser credentials
 and progress through process manually -> Close -> Publish ... under staging repositories
 """
-        def bintray = new RESTClient('https://api.bintray.com/maven_central_sync/groovy/maven/')
+        def bintray = new RESTClient('https://api.bintray.com/maven_central_sync/groovy/maven/') // apache-groovy?
         bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
         def body = /{
             "username" : "${project.findProperty('centralUser')}",
             "password" : "${project.findProperty('centralKey')}"
         }/
         def resp = bintray.post(
-                path: "groovy/versions/$relVersion",
+                path: "groovy/versions/$relVersion", // apache-groovy?
                 body: body,
                 requestContentType: JSON
         )
@@ -163,7 +186,8 @@ task publishZipsOnBintray(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
         fileTree("$stagingDir/target/distributions").files.each { File f ->
             println "Uploading $f.name"
             def resp = bintray.put(
-                    path: "groovy/$relVersion/${f.name}",
+                    path: "groovy/$relVersion/${f.name}", // apache-groovy?
+//                    path: "apache-groovy/$relVersion/${f.name}", // apache-groovy
                     body: f.bytes,
                     requestContentType: BINARY
             )
@@ -237,7 +261,7 @@ task uploadDocumentationToGroovyWebsite() {
                 execute "rm -rf /var/www/docs/docs/groovy-${relVersion}/"
                 execute "unzip -d /var/www/docs/docs/ /var/www/docs/docs/apache-groovy-docs-${relVersion}.zip"
                 execute "chmod 664 /var/www/docs/docs/apache-groovy-docs-${relVersion}.zip"
-                execute "chgrp -R teamcity /var/www/docs/docs/groovy-${relVersion}/"
+//                execute "chgrp -R teamcity /var/www/docs/docs/groovy-${relVersion}/"
 //                execute "chown -R teamcity /var/www/docs/docs/groovy-${relVersion}/"
                 execute "rm /var/www/docs/docs/apache-groovy-docs-${relVersion}.zip"
             }
@@ -279,8 +303,8 @@ task maybeUpdateDocumentationSymlink(dependsOn: findGroovyVersions) {
         ssh.run {
             session(remotes.ciServer) {
                 execute 'uname -a'
-                execute "cd /var/www/docs/docs; ln -s -f -T groovy-$relVersion latest"
-                execute "chgrp -h teamcity /var/www/docs/docs/latest"
+                execute "cd /var/www/docs/docs; ln -s -f -T groovy-$relVersion latest; ln -s -f -T groovy-$relVersion groovy-latest"
+//                execute "chgrp -h teamcity /var/www/docs/docs/latest"
 //                execute "chown -h teamcity /var/www/docs/docs/latest"
             }
         }
@@ -367,6 +391,7 @@ task createNextVersionInJira(dependsOn: [jiraCheckPhase2]) {
             def body = /{ "name": "$nextVersion", "project": "GROOVY", "projectId": $projectId }/
             resp = jira.post(path: "version", body: body, requestContentType: JSON)
             assert resp.status == 201
+            println resp.data.message
         }
     }
 }
