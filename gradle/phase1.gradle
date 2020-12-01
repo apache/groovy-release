@@ -138,7 +138,7 @@ task updateVersionProperties(dependsOn: [assumesPropsSet, createReleaseBranch]) 
 }
 
 // use Exec rather the GradleBuild to ensure we use the correct gradle version for the groovy version being built
-task buildAndUpload(type: Exec, dependsOn: [assumesPropsSet, updateVersionProperties, checkCompatibility]) {
+task buildAndUploadStep1(type: Exec, dependsOn: [assumesPropsSet, updateVersionProperties, checkCompatibility]) {
     group = "Pre-vote phase"
     description = "Builds Apache Groovy and publishes the Maven artifacts to the staging repository on Bintray"
     workingDir stagingDir
@@ -154,7 +154,7 @@ task buildAndUpload(type: Exec, dependsOn: [assumesPropsSet, updateVersionProper
     if (!relVersion.startsWith('2.4')) {
         theArgs << '--no-build-cache'
     }
-    theArgs << "-PartifactoryContext=https://groovy.jfrog.io/groovy/" // apache-groovy for Groovy 4
+    theArgs << "-PartifactoryContext=https://groovy.jfrog.io/groovy/"
     theArgs << "-PartifactoryRepoKey=${releaseBuild ? 'libs-release-local' : 'libs-snapshot-local'}"
     if (project.hasProperty('skipPublish')) {
         theArgs += ['install', 'dist']
@@ -164,7 +164,27 @@ task buildAndUpload(type: Exec, dependsOn: [assumesPropsSet, updateVersionProper
     commandLine theArgs
 }
 
-task cleanSvnDevWorkspace(type: Delete, dependsOn: [assumesBranch, buildAndUpload]) {
+// use Exec rather the GradleBuild to ensure we use the correct gradle version for the groovy version being built
+task uploadStep2(type: Exec, dependsOn: [buildAndUploadStep1]) {
+    group = "Pre-vote phase"
+    description = "Publishes the Maven artifacts to the Apache staging repository"
+    workingDir stagingDir
+    if (relVersion.startsWith('4.0')) {
+        ext.theArgs = []
+        if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+            theArgs += ['cmd', '/C', 'gradlew.bat']
+        } else {
+            theArgs += ['sh', './gradlew']
+        }
+        if (!relVersion.startsWith('2.4')) {
+            theArgs << '--no-build-cache'
+        }
+        theArgs += ['publishAllPublicationsToApacheRepoRepository']
+        commandLine theArgs
+    }
+}
+
+task cleanSvnDevWorkspace(type: Delete, dependsOn: [assumesBranch, uploadStep2]) {
     delete devWorkspaceRoot
 }
 
@@ -176,14 +196,14 @@ task prepareSvnDevWorkspace(type: SvnCheckout, dependsOn: [assumesBranch, cleanS
 
 task copySvnDistro(type: Copy, dependsOn: [assumesPropsSet, prepareSvnDevWorkspace]) {
     description = "Creates the required tree structure for distribution"
-    from("$stagingDir/target/distributions")
+    from(relVersion.startsWith('4.0') ? "$stagingDir/subprojects/groovy-binary/build/distributions" : "$stagingDir/target/distributions")
     into "$devWorkspace/distribution"
     exclude 'apache-groovy-src-*'
 }
 
 task copySvnSources(type: Copy, dependsOn: [assumesPropsSet, prepareSvnDevWorkspace]) {
     description = "Creates the required tree structure for sources"
-    from("$stagingDir/target/distributions")
+    from(relVersion.startsWith('4.0') ? "$stagingDir/subprojects/groovy-binary/build/distributions" : "$stagingDir/target/distributions")
     into "$devWorkspace/sources"
     include 'apache-groovy-src-*'
 }
@@ -224,7 +244,6 @@ task createAndPushTag(dependsOn: [assumesPropsSet, checkDevWorkspaceVersion]) {
     group = "Pre-vote phase"
     description = "Creates a release tag and pushes it to the Apache Git repository"
     doLast {
-//        def apacheCredentials = new Credentials(username: apacheUser, password: apachePassword)
         def apacheCredentials = new Credentials(apacheUser, apachePassword)
         def grgit = grgitClass.open(dir: stagingDir, creds: apacheCredentials)
         def tagName = "GROOVY_$underVersion"
