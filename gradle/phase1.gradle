@@ -179,7 +179,7 @@ task uploadStep2(type: Exec, dependsOn: [buildAndUploadStep1]) {
         if (!relVersion.startsWith('2.4')) {
             theArgs << '--no-build-cache'
         }
-        theArgs += ['publishAllPublicationsToApacheRepoRepository']
+        theArgs += ['publishAllPublicationsToApacheRepository']
         commandLine theArgs
     }
 }
