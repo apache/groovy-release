@@ -99,8 +99,8 @@ task promoteOnBintray(dependsOn: jiraCheckPhase2) {
         def build = builds.find {
             resp = artifactory.get(path: 'api/build/groovy/' + it.uri, contentType: JSON)
             assert resp.status == 200
-//            def coreModuleId = resp.data.buildInfo.modules*.id.find{ it.startsWith('org.codehaus.groovy:groovy:') } // apache
-            def coreModuleId = resp.data.buildInfo.modules*.id.find{ it.startsWith('org.apache.groovy:groovy:') } // apache
+            def prefix = relVersion.startsWith('4.0') ? 'org.apache.groovy:groovy:' : 'org.codehaus.groovy:groovy:'
+            def coreModuleId = resp.data.buildInfo.modules*.id.find{ it.startsWith(prefix) }
             def found = coreModuleId?.endsWith(':' + relVersion)
             println "${found ? 'FOUND' : 'SKIPPING'} $coreModuleId @ ${it.uri}"
             found
@@ -159,7 +159,7 @@ Synchronizing with Maven central. This may take a few minutes ...
 If this fails, log on to https://oss.sonatype.org/ using the centralUser credentials
 and progress through process manually -> Close -> Publish ... under staging repositories
 """
-        def bintray = new RESTClient('https://api.bintray.com/maven_central_sync/groovy/maven/') // apache-groovy?
+        def bintray = new RESTClient('https://api.bintray.com/maven_central_sync/groovy/maven/')
         bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
         def body = /{
             "username" : "${project.findProperty('centralUser')}",
@@ -175,6 +175,7 @@ and progress through process manually -> Close -> Publish ... under staging repo
         println resp.data.messages.join('\n')
     }
 }
+synchronizeWithMavenCentral.onlyIf()
 
 // TODO decide if this should go via staging on artifactory
 task publishZipsOnBintray(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
@@ -186,8 +187,8 @@ task publishZipsOnBintray(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
         fileTree("$stagingDir/target/distributions").files.each { File f ->
             println "Uploading $f.name"
             def resp = bintray.put(
-                    path: "groovy/$relVersion/${f.name}", // apache-groovy?
-//                    path: "apache-groovy/$relVersion/${f.name}", // apache-groovy
+                    path: "groovy/$relVersion/${f.name}",
+//                    path: "apache-groovy/$relVersion/${f.name}",
                     body: f.bytes,
                     requestContentType: BINARY
             )
