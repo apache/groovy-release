@@ -169,7 +169,7 @@ task uploadStep2(type: Exec, dependsOn: [buildAndUploadStep1]) {
     group = "Pre-vote phase"
     description = "Publishes the Maven artifacts to the Apache staging repository"
     workingDir stagingDir
-    if (relVersion.startsWith('4.0')) {
+    if (apacheGroupId) {
         ext.theArgs = []
         if (Os.isFamily(Os.FAMILY_WINDOWS)) {
             theArgs += ['cmd', '/C', 'gradlew.bat']
@@ -196,14 +196,14 @@ task prepareSvnDevWorkspace(type: SvnCheckout, dependsOn: [assumesBranch, cleanS
 
 task copySvnDistro(type: Copy, dependsOn: [assumesPropsSet, prepareSvnDevWorkspace]) {
     description = "Creates the required tree structure for distribution"
-    from(relVersion.startsWith('4.0') ? "$stagingDir/subprojects/groovy-binary/build/distributions" : "$stagingDir/target/distributions")
+    from("$distParentDir/distributions")
     into "$devWorkspace/distribution"
     exclude 'apache-groovy-src-*'
 }
 
 task copySvnSources(type: Copy, dependsOn: [assumesPropsSet, prepareSvnDevWorkspace]) {
     description = "Creates the required tree structure for sources"
-    from(relVersion.startsWith('4.0') ? "$stagingDir/subprojects/groovy-binary/build/distributions" : "$stagingDir/target/distributions")
+    from("$distParentDir/distributions")
     into "$devWorkspace/sources"
     include 'apache-groovy-src-*'
 }

@@ -86,6 +86,8 @@ ext {
     relVersion = project.findProperty('releaseVersion')
     numVersion = relVersion?.find(/^[\d\.]+/)
     newRelease = numVersion?.endsWith('.0')
+    apacheGroupId = relVersion && relVersion[0] >= '4'
+    distParentDir = apacheGroupId ? "$stagingDir/subprojects/groovy-binary/build" : "$stagingDir/target"
     underVersion = relVersion?.replace('.', '_')?.replace('-', '_')?.toUpperCase()
     releaseBuild = !relVersion?.toLowerCase()?.contains('snapshot')
     stableBuild = releaseBuild && !relVersion?.toLowerCase()?.contains('alpha') && !relVersion?.toLowerCase()?.contains('beta') && !relVersion?.toLowerCase()?.contains('rc')

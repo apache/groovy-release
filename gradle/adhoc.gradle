@@ -117,5 +117,7 @@ task showInfo(dependsOn: assumesPropsSet) {
         println "devWorkspace = $devWorkspace"
         println "releaseWorkspace = $releaseWorkspace"
         println "stagingWebsiteDir = $stagingWebsiteDir"
+        println "apacheGroupId = $apacheGroupId"
+        println "distParentDir = $distParentDir"
     }
 }

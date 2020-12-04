@@ -99,7 +99,7 @@ task promoteOnBintray(dependsOn: jiraCheckPhase2) {
         def build = builds.find {
             resp = artifactory.get(path: 'api/build/groovy/' + it.uri, contentType: JSON)
             assert resp.status == 200
-            def prefix = relVersion.startsWith('4.0') ? 'org.apache.groovy:groovy:' : 'org.codehaus.groovy:groovy:'
+            def prefix = apacheGroupId ? 'org.apache.groovy:groovy:' : 'org.codehaus.groovy:groovy:'
             def coreModuleId = resp.data.buildInfo.modules*.id.find{ it.startsWith(prefix) }
             def found = coreModuleId?.endsWith(':' + relVersion)
             println "${found ? 'FOUND' : 'SKIPPING'} $coreModuleId @ ${it.uri}"
@@ -112,17 +112,18 @@ task promoteOnBintray(dependsOn: jiraCheckPhase2) {
             "dryRun" : ${project.hasProperty('dryRun').toString()},
             "publish" : true,
             "async" : false,
-            "targetRepo" : "distribution-repo",
+            "targetRepo" : "${apacheGroupId ? 'distribution-repo-apache' : 'distribution-repo'}",
             "sourceRepos" : ["libs-release-local"]
         }/
+        if (project.hasProperty('dryRun')) println body
         resp = artifactory.post(
                 path: "api/build/distribute/groovy/$buildNum",
                 body: body,
                 requestContentType: JSON
         )
-        assert resp.status == 200
         if (project.hasProperty('dryRun')) println resp.data
         else println resp.data.message
+        assert resp.status == 200
     }
 }
 
@@ -166,7 +167,7 @@ and progress through process manually -> Close -> Publish ... under staging repo
             "password" : "${project.findProperty('centralKey')}"
         }/
         def resp = bintray.post(
-                path: "groovy/versions/$relVersion", // apache-groovy?
+                path: "groovy/versions/$relVersion",
                 body: body,
                 requestContentType: JSON
         )
@@ -175,20 +176,18 @@ and progress through process manually -> Close -> Publish ... under staging repo
         println resp.data.messages.join('\n')
     }
 }
-synchronizeWithMavenCentral.onlyIf()
+synchronizeWithMavenCentral.onlyIf{ !apacheGroupId }
 
-// TODO decide if this should go via staging on artifactory
 task publishZipsOnBintray(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
     group = "Post-passed phase"
     description = "Publish distribution zips to bintray"
     doLast {
         def bintray = new RESTClient('https://api.bintray.com/content/groovy/maven/')
         bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
-        fileTree("$stagingDir/target/distributions").files.each { File f ->
+        fileTree("$distParentDir/distributions").files.each { File f ->
             println "Uploading $f.name"
             def resp = bintray.put(
                     path: "groovy/$relVersion/${f.name}",
-//                    path: "apache-groovy/$relVersion/${f.name}",
                     body: f.bytes,
                     requestContentType: BINARY
             )
@@ -258,7 +257,7 @@ task uploadDocumentationToGroovyWebsite() {
         ssh.run {
             session(remotes.ciServer) {
                 execute 'uname -a'
-                put from: "$stagingDir/target/distributions/apache-groovy-docs-${relVersion}.zip", into: '/var/www/docs/docs'
+                put from: "$distParentDir/distributions/apache-groovy-docs-${relVersion}.zip", into: '/var/www/docs/docs'
                 execute "rm -rf /var/www/docs/docs/groovy-${relVersion}/"
                 execute "unzip -d /var/www/docs/docs/ /var/www/docs/docs/apache-groovy-docs-${relVersion}.zip"
                 execute "chmod 664 /var/www/docs/docs/apache-groovy-docs-${relVersion}.zip"
@@ -364,7 +363,7 @@ task waitForWebsitePublication(dependsOn: pushGroovyWebsite) {
 }
 waitForWebsitePublication.onlyIf{ releaseBuild }
 
-task publishToSDKman(dependsOn: [waitForWebsitePublication, maybeUpdateDocumentationSymlink, synchronizeWithMavenCentral, publishZipsOnBintray, uploadToApacheReleaseServer, sdkReleaseVersion]) {
+task publishToSDKman(dependsOn: [synchronizeWithMavenCentral, publishZipsOnBintray, uploadToApacheReleaseServer, waitForWebsitePublication, maybeUpdateDocumentationSymlink, sdkReleaseVersion]) {
     group = "Post-passed phase"
     description = "Publishes the release on SDKman"
 }
