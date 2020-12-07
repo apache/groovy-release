@@ -159,7 +159,7 @@ task buildAndUploadStep1(type: Exec, dependsOn: [assumesPropsSet, updateVersionP
     if (project.hasProperty('skipPublish')) {
         theArgs += ['install', 'dist']
     } else {
-        theArgs += ['install', 'dist', 'artifactoryPublish']
+        theArgs += ['install', 'dist', 'signSdkElements', 'artifactoryPublish']
     }
     commandLine theArgs
 }
