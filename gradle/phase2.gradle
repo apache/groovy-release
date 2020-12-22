@@ -3,11 +3,8 @@ import at.bxm.gradleplugins.svntools.tasks.SvnAdd
 import at.bxm.gradleplugins.svntools.tasks.SvnCheckout
 import at.bxm.gradleplugins.svntools.tasks.SvnCommit
 import at.bxm.gradleplugins.svntools.tasks.SvnDelete
-import groovyx.net.http.RESTClient
-import groovyx.net.http.HttpResponseException
+import groovyx.net.http.HttpBuilder
 import org.ajoberstar.grgit.Credentials
-
-import static groovyx.net.http.ContentType.*
 
 buildscript {
     repositories {
@@ -20,7 +17,7 @@ buildscript {
     dependencies {
         classpath "org.ajoberstar:grgit:${getProperty('version.grgit')}"
         classpath "at.bxm.gradleplugins:gradle-svntools-plugin:${getProperty('version.svntools')}"
-        classpath "org.codehaus.groovy.modules.http-builder:http-builder:${getProperty('version.httpbuilder')}"
+        classpath "io.github.http-builder-ng:http-builder-ng-okhttp:${getProperty('version.httpbuilderng')}"
         classpath "org.hidetake:gradle-ssh-plugin:${getProperty('version.sshplugin')}"
         classpath "gradle.plugin.io.sdkman:gradle-sdkvendor-plugin:${getProperty('version.sdkmanplugin')}"
     }
@@ -63,24 +60,30 @@ sdkman {
 
 task jiraCheckPhase2(dependsOn: assumesRelVersion) {
     doLast {
-        def jira = new RESTClient('https://issues.apache.org/jira/rest/api/2/')
-//        jira.headers['Authorization'] = 'Basic ' + "$apacheUser:$apachePassword".getBytes('iso-8859-1').encodeBase64()
-        def resp = jira.get(path: 'project/GROOVY/versions')
-        assert resp.status == 200
-        def versionFields = resp.data.find { it.name == relVersion }
+        def prefix = '/jira/rest/api/2'
+        def jira = HttpBuilder.configure {
+            request.uri = 'https://issues.apache.org'
+            request.auth.basic apacheUser, apachePassword
+        }
+        def resp = jira.get {
+            request.uri.path = "$prefix/project/GROOVY/versions"
+        }
+        def versionFields = resp.find { it.name == relVersion }
         assert versionFields, "Version $relVersion not found in Jira!"
         assert versionFields.released, "Version $relVersion not yet released!"
         project.ext.versionId = versionFields.id
         project.ext.projectId = versionFields.projectId
 
-        resp = jira.get(path: "version/$versionId/unresolvedIssueCount")
-        assert resp.data
-        if (resp.data.issuesUnresolvedCount) {
-            logger.warn "Warning found $resp.data.issuesUnresolvedCount unresolved issues for version $relVersion"
+        resp = jira.get {
+            request.uri.path = "$prefix/version/$versionId/unresolvedIssueCount"
         }
-        resp = jira.get(path: "version/$versionId/relatedIssueCounts")
-        assert resp.data
-        project.ext.fixCount = resp.data.issuesFixedCount
+        if (resp.issuesUnresolvedCount) {
+            logger.warn "Warning found $resp.issuesUnresolvedCount unresolved issues for version $relVersion"
+        }
+        resp = jira.get {
+            request.uri.path = "$prefix/version/$versionId/relatedIssueCounts"
+        }
+        project.ext.fixCount = resp.issuesFixedCount
     }
 }
 
@@ -88,26 +91,32 @@ task promoteOnBintray(dependsOn: jiraCheckPhase2) {
     group = "Post-passed phase"
     description = "Releases the version on Bintray"
     doLast {
-        def artifactory = new RESTClient('https://groovy.jfrog.io/groovy/')
-        artifactory.headers['Authorization'] = 'Basic ' + "$artifactoryUser:$artifactoryPassword".getBytes('iso-8859-1').encodeBase64()
-        def resp = artifactory.get(path: 'api/build/groovy', contentType: JSON)
-        assert resp.status == 200
+        def artifactory = HttpBuilder.configure {
+            request.uri = 'https://groovy.jfrog.io'
+            request.auth.basic artifactoryUser, artifactoryPassword
+        }
+        def resp = artifactory.get {
+            request.uri.path = '/groovy/api/build/groovy'
+            request.headers['Accept'] = 'application/json'
+        }
         // sort to minimise work - normally we want the last started
-        def builds = resp.data.buildsNumbers.sort{ it.started }.reverse()
+        def builds = resp.buildsNumbers.sort{ it.started }.reverse()
         // check version - in case we are releasing multiple builds at the one time
         println "----------------"
-        def build = builds.find {
-            resp = artifactory.get(path: 'api/build/groovy/' + it.uri, contentType: JSON)
-            assert resp.status == 200
+        def build = builds.find { b ->
+            resp = artifactory.get {
+                request.uri.path = "/groovy/api/build/groovy/$b.uri"
+                request.headers['Accept'] = 'application/json'
+            }
             def prefix = apacheGroupId ? 'org.apache.groovy:groovy:' : 'org.codehaus.groovy:groovy:'
-            def coreModuleId = resp.data.buildInfo.modules*.id.find{ it.startsWith(prefix) }
+            def coreModuleId = resp.buildInfo.modules*.id.find{ it.startsWith(prefix) }
             def found = coreModuleId?.endsWith(':' + relVersion)
-            println "${found ? 'FOUND' : 'SKIPPING'} $coreModuleId @ ${it.uri}"
+            println "${found ? 'FOUND' : 'SKIPPING'} $coreModuleId @ ${b.uri}"
             found
         }
         println "----------------"
         assert build, "No build matching $relVersion found in artifactory"
-        def buildNum = build.uri[1..-1]
+        def buildNum = resp.buildInfo.number
         def body = /{
             "dryRun" : ${project.hasProperty('dryRun').toString()},
             "publish" : true,
@@ -115,17 +124,65 @@ task promoteOnBintray(dependsOn: jiraCheckPhase2) {
             "targetRepo" : "${apacheGroupId ? 'distribution-repo-apache' : 'distribution-repo'}",
             "sourceRepos" : ["libs-release-local"]
         }/
-        if (project.hasProperty('dryRun')) println body
-        resp = artifactory.post(
-                path: "api/build/distribute/groovy/$buildNum",
-                body: body,
-                requestContentType: JSON
-        )
-        if (project.hasProperty('dryRun')) println resp.data
-        else println resp.data.message
-        assert resp.status == 200
+        if (project.hasProperty('dryRun')) println "path: api/build/distribute/groovy/$buildNum\nbody: $body"
+        resp = artifactory.post{
+            request.uri.path = "/groovy/api/build/distribute/groovy/$buildNum"
+            request.body = body
+            request.contentType = 'application/json'
+        }
+        if (project.hasProperty('dryRun')) println resp
     }
 }
+
+task augmentProperties(dependsOn: jiraCheckPhase2) {
+    group = "Post-passed phase"
+    description = "Display info about build"
+    doLast {
+        def artifactory = HttpBuilder.configure {
+            request.uri = 'https://groovy.jfrog.io'
+            request.auth.basic artifactoryUser, artifactoryPassword
+        }
+        def resp = artifactory.get {
+            request.uri.path = '/groovy/api/build/groovy'
+            request.headers['Accept'] = 'application/json'
+        }
+        // sort to minimise work - normally we want the last started
+        def builds = resp.buildsNumbers.sort{ it.started }.reverse()
+        // check version - in case we are releasing multiple builds at the one time
+        println "----------------"
+        def build = builds.find { b ->
+            resp = artifactory.get {
+                request.uri.path = "/groovy/api/build/groovy/$b.uri"
+                request.headers['Accept'] = 'application/json'
+            }
+            def prefix = apacheGroupId ? 'org.apache.groovy:groovy:' : 'org.codehaus.groovy:groovy:'
+            def coreModuleId = resp.buildInfo.modules*.id.find{ it.startsWith(prefix) }
+            def found = coreModuleId?.endsWith(':' + relVersion)
+            println "${found ? 'FOUND' : 'SKIPPING'} $coreModuleId @ ${b.uri}"
+            found
+        }
+        println "----------------"
+        assert build, "No build matching $relVersion found in artifactory"
+        def buildNum = resp.buildInfo.number
+        def buildName = resp.buildInfo.name
+        def prefix = '/groovy/api/storage/libs-release-local'
+        def suffix = "build.name=$buildName;build.number=$buildNum&recursive=1"
+
+        resp.buildInfo.modules*.id.each { module ->
+            println "Augmenting properties for module $module"
+            def pieces = module.split(':')
+            def middle = "${pieces[0].replace('.', '/')}/${pieces[1]}/${pieces[2]}"
+            artifactory.put {
+                request.uri.path = "$prefix/$middle"
+                request.uri.query = [properties: suffix, recursive: '1']
+                response.failure { fs ->
+                    println "request failed: $fs.statusCode : $fs.message"
+                }
+            }
+        }
+    }
+}
+augmentProperties.onlyIf{ apacheGroupId }
 
 task waitForBintrayPublication(dependsOn: [promoteOnBintray]) {
     group = "Post-passed phase"
@@ -134,16 +191,17 @@ task waitForBintrayPublication(dependsOn: [promoteOnBintray]) {
         def found = false
         def delay = 30000 // 1/2 a minute
         def numTries = 60 // wait for up to 30 mins
+        def bintray = HttpBuilder.configure {
+            request.uri = 'https://dl.bintray.com/'
+        }
         while (!found && numTries-- > 0) {
-            def bintraysite = new RESTClient('https://dl.bintray.com/')
-            def resp = null
-            try {
-                resp = bintraysite.head(path: "groovy/maven/apache-groovy-sdk-${relVersion}.zip")
-            } catch(HttpResponseException ignore) {}
-            if (resp?.status == 200) {
-                found = true
-            } else {
-                sleep delay
+            found = true
+            bintray.head {
+                request.uri.path = "/groovy/maven/apache-groovy-sdk-${relVersion}.zip"
+                response.failure { fs ->
+                    sleep delay
+                    found = false
+                }
             }
         }
         assert found, 'Timed out waiting for bintray publish/sync - please check manually'
@@ -160,20 +218,19 @@ Synchronizing with Maven central. This may take a few minutes ...
 If this fails, log on to https://oss.sonatype.org/ using the centralUser credentials
 and progress through process manually -> Close -> Publish ... under staging repositories
 """
-        def bintray = new RESTClient('https://api.bintray.com/maven_central_sync/groovy/maven/')
-        bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
+        def bintray = HttpBuilder.configure {
+            request.uri = 'https://dl.bintray.com/'
+            request.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
+        }
         def body = /{
             "username" : "${project.findProperty('centralUser')}",
             "password" : "${project.findProperty('centralKey')}"
         }/
-        def resp = bintray.post(
-                path: "groovy/versions/$relVersion",
-                body: body,
-                requestContentType: JSON
-        )
-        assert resp.status == 200
-        println resp.data.status
-        println resp.data.messages.join('\n')
+        bintray.post {
+            request.uri.path = "/maven_central_sync/groovy/maven/groovy/versions/$relVersion"
+            request.body = body
+            request.contentType = 'application/json'
+        }
     }
 }
 synchronizeWithMavenCentral.onlyIf{ !apacheGroupId }
@@ -182,18 +239,19 @@ task publishZipsOnBintray(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
     group = "Post-passed phase"
     description = "Publish distribution zips to bintray"
     doLast {
-        def bintray = new RESTClient('https://api.bintray.com/content/groovy/maven/')
-        bintray.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
+        def bintray = HttpBuilder.configure {
+            request.uri = 'https://api.bintray.com'
+            request.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
+        }
         fileTree("$distParentDir/distributions").files.each { File f ->
             println "Uploading $f.name"
-            def resp = bintray.put(
-                    path: "groovy/$relVersion/${f.name}",
-                    body: f.bytes,
-                    requestContentType: BINARY
-            )
-            assert resp.status == 201
+            bintray.put {
+                request.uri.path = "/content/groovy/maven/groovy/$relVersion/${f.name}"
+                request.body = f.bytes
+                request.contentType = 'application/octet-stream'
+            }
         }
-        println "Zips uploaded! Please release manually."
+        println "Zips uploaded! You may need to release manually."
         // TODO automate release
     }
 }
@@ -344,18 +402,22 @@ pushGroovyWebsite.onlyIf{ releaseBuild }
 
 task waitForWebsitePublication(dependsOn: pushGroovyWebsite) {
     group = "Post-passed phase"
-    description = "Polls the Groovy website to check if it is released"
+    description = "Polls the Groovy website to check if the changelog for this version is published"
     doLast {
         def found = false
         def delay = 30000 // 1/2 a minute
         def numTries = 60 // wait for up to 30 mins
+        def usersite = HttpBuilder.configure {
+            request.uri = 'https://groovy-lang.org'
+        }
         while (!found && numTries-- > 0) {
-            def groovysite = new RESTClient('https://groovy-lang.org/')
-            def resp = groovysite.get(path: "changelogs/changelog-${relVersion}.html")
-            if (resp.status == 200 && !resp.data.text().contains('Oops!')) {
-                found = true
-            } else {
-                sleep delay
+            found = true
+            usersite.head {
+                request.uri.path = "/changelogs/changelog-${relVersion}.html"
+                response.failure { fs ->
+                    sleep delay
+                    found = false
+                }
             }
         }
         assert found, 'Timed out waiting for website to be published - please check manually'
@@ -380,18 +442,23 @@ task createNextVersionInJira(dependsOn: [jiraCheckPhase2]) {
     group = "Post-passed phase"
     description = "Make sure that Jira is ready for the next version on this branch"
     doLast {
-        def jira = new RESTClient('https://issues.apache.org/jira/rest/api/2/')
-        def resp = jira.get(path: 'project/GROOVY/versions')
-        assert resp.status == 200
-        def versionFields = resp.data.find { it.name == nextVersion }
+        def prefix = '/jira/rest/api/2'
+        def jira = HttpBuilder.configure {
+            request.uri = 'https://issues.apache.org'
+            request.auth.basic apacheUser, apachePassword
+        }
+        def resp = jira.get {
+            request.uri.path = "$prefix/project/GROOVY/versions"
+        }
+        def versionFields = resp.find { it.name == nextVersion }
         if (versionFields) {
             println "Version $nextVersion already found in Jira!"
         } else {
-            jira.headers['Authorization'] = 'Basic ' + "$apacheUser:$apachePassword".getBytes('iso-8859-1').encodeBase64()
-            def body = /{ "name": "$nextVersion", "project": "GROOVY", "projectId": $projectId }/
-            resp = jira.post(path: "version", body: body, requestContentType: JSON)
-            assert resp.status == 201
-            println resp.data.message
+            jira.post {
+                request.uri.path = "$prefix/version"
+                request.body = /{ "name": "$nextVersion", "project": "GROOVY", "projectId": $projectId }/
+                request.contentType = 'application/json'
+            }
         }
     }
 }

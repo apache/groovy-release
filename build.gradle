@@ -66,7 +66,7 @@ buildscript {
     dependencies {
         classpath "org.ajoberstar:grgit:${getProperty('version.grgit')}"
         classpath "at.bxm.gradleplugins:gradle-svntools-plugin:${getProperty('version.svntools')}"
-        classpath "org.codehaus.groovy.modules.http-builder:http-builder:${getProperty('version.httpbuilder')}"
+        classpath "io.github.http-builder-ng:http-builder-ng-okhttp:${getProperty('version.httpbuilderng')}"
         classpath "org.hidetake:gradle-ssh-plugin:${getProperty('version.sshplugin')}"
         classpath "gradle.plugin.io.sdkman:gradle-sdkvendor-plugin:${getProperty('version.sdkmanplugin')}"
     }
@@ -94,12 +94,14 @@ ext {
     if (releaseBuild) {
         def parts = relVersion?.split(/\./)
         baseVersion = parts?.with{ "${it[0]}.${it[1]}.0"  }
-        if (stableBuild) {
-            nextVersion = [parts[0], parts[1], parts[2].toInteger() + 1].join('.')
-        } else {
-            def subparts = parts[2]?.split(/-/)
-            def part2 = [subparts[0], subparts[1], subparts[2].toInteger() + 1].join('-')
-            nextVersion = [parts[0], parts[1], part2].join('.')
+        if (parts) {
+            if (stableBuild) {
+                nextVersion = [parts[0], parts[1], parts[2].toInteger() + 1].join('.')
+            } else {
+                def subparts = parts[2]?.split(/-/)
+                def part2 = [subparts[0], subparts[1], subparts[2].toInteger() + 1].join('-')
+                nextVersion = [parts[0], parts[1], part2].join('.')
+            }
         }
     }
     devWorkspaceRoot = "$project.buildDir/svn-dev-workspace-$branch"
