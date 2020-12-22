@@ -134,6 +134,8 @@ task promoteOnBintray(dependsOn: jiraCheckPhase2) {
     }
 }
 
+// we fix up properties to ensure paths are found, see link:
+// https://jfrog.com/knowledge-base/why-doesnt-my-build-have-paths-to-published-artifacts-even-though-it-did-upload-them/
 task augmentProperties(dependsOn: jiraCheckPhase2) {
     group = "Post-passed phase"
     description = "Display info about build"
