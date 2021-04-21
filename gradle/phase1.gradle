@@ -163,8 +163,10 @@ task buildAndUploadStep1(type: Exec, dependsOn: [assumesPropsSet, updateVersionP
     theArgs << "-PartifactoryRepoKey=${releaseBuild ? 'libs-release-local' : 'libs-snapshot-local'}"
     if (project.hasProperty('skipPublish')) {
         theArgs += ['install', 'dist']
-    } else {
+    } else if (apacheGroupId) {
         theArgs += ['install', 'dist', 'signSdkElements', 'artifactoryPublish']
+    } else {
+        theArgs += ['install', 'dist', 'artifactoryPublish']
     }
     commandLine theArgs
 }
@@ -174,20 +176,21 @@ task uploadStep2(type: Exec, dependsOn: [buildAndUploadStep1]) {
     group = "Pre-vote phase"
     description = "Publishes the Maven artifacts to the Apache staging repository"
     workingDir stagingDir
-    if (apacheGroupId) {
+//    if (apacheGroupId) {
         ext.theArgs = []
         if (Os.isFamily(Os.FAMILY_WINDOWS)) {
             theArgs += ['cmd', '/C', 'gradlew.bat']
         } else {
             theArgs += ['sh', './gradlew']
         }
-        if (!relVersion.startsWith('2.4')) {
+//        if (!relVersion.startsWith('2.4')) {
             theArgs << '--no-build-cache'
-        }
+//        }
         theArgs += ['publishAllPublicationsToApacheRepository']
         commandLine theArgs
-    }
+//    }
 }
+uploadStep2.onlyIf{ apacheGroupId }
 
 task cleanSvnDevWorkspace(type: Delete, dependsOn: [assumesBranch, uploadStep2]) {
     delete devWorkspaceRoot
@@ -314,7 +317,7 @@ Source release: https://dist.apache.org/repos/dist/dev/groovy/$relVersion/source
 Convenience binaries: https://dist.apache.org/repos/dist/dev/groovy/$relVersion/distribution
 
 Release artifacts are signed with a key from the following file:
-https://dist.apache.org/repos/dist/dev/groovy/KEYS
+https://dist.apache.org/repos/dist/release/groovy/KEYS
 
 Please vote on releasing this package as Apache Groovy $relVersion.
 

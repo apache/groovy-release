@@ -54,7 +54,7 @@ sdkman {
     consumerToken = findProperty('gvm.consumerPassword')
     candidate = "groovy"
     version = "$relVersion"
-    url = "https://dl.bintray.com/groovy/maven/apache-groovy-sdk-${relVersion}.zip"
+    url = "https://groovy.jfrog.io/artifactory/dist-release-local/groovy-zips/apache-groovy-sdk-${relVersion}.zip"
     hashtag = "#groovylang"
 }
 
@@ -87,9 +87,10 @@ task jiraCheckPhase2(dependsOn: assumesRelVersion) {
     }
 }
 
-task promoteOnBintray(dependsOn: jiraCheckPhase2) {
+/*
+task promoteJarsOnArtifactory(dependsOn: jiraCheckPhase2) {
     group = "Post-passed phase"
-    description = "Releases the version on Bintray"
+    description = "Releases the versions artifacts on Artifactory"
     doLast {
         def artifactory = HttpBuilder.configure {
             request.uri = 'https://groovy.jfrog.io'
@@ -133,7 +134,9 @@ task promoteOnBintray(dependsOn: jiraCheckPhase2) {
         if (project.hasProperty('dryRun')) println resp
     }
 }
+*/
 
+/*
 // we fix up properties to ensure paths are found, see link:
 // https://jfrog.com/knowledge-base/why-doesnt-my-build-have-paths-to-published-artifacts-even-though-it-did-upload-them/
 task augmentProperties(dependsOn: jiraCheckPhase2) {
@@ -185,32 +188,54 @@ task augmentProperties(dependsOn: jiraCheckPhase2) {
     }
 }
 augmentProperties.onlyIf{ apacheGroupId }
+*/
 
-task waitForBintrayPublication(dependsOn: [promoteOnBintray]) {
+task publishZipsOnArtifactory(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
     group = "Post-passed phase"
-    description = "Polls the Bintray website to check if it is released"
+    description = "Publish distribution zips to Groovy artifactory instance"
+    doLast {
+        def artifactory = HttpBuilder.configure {
+            request.uri = 'https://groovy.jfrog.io/'
+            request.headers['Authorization'] = 'Basic ' + "$artifactoryUser:$artifactoryPassword".getBytes('iso-8859-1').encodeBase64()
+        }
+        fileTree("$distParentDir/distributions").files.each { File f ->
+            println "Uploading $f.name"
+            artifactory.put {
+                request.uri.path = "/artifactory/dist-release-local/groovy-zips/${f.name}"
+                request.body = f.bytes
+                request.contentType = 'application/octet-stream'
+            }
+        }
+        println "Zips uploaded! You may need to release manually."
+    }
+}
+
+task waitForArtifactoryZipPublication(dependsOn: [publishZipsOnArtifactory/*, promoteJarsOnArtifactory*/]) {
+    group = "Post-passed phase"
+    description = "Polls the artifactory instance website to check if it is released"
     doLast {
         def found = false
         def delay = 30000 // 1/2 a minute
         def numTries = 60 // wait for up to 30 mins
         def bintray = HttpBuilder.configure {
-            request.uri = 'https://dl.bintray.com/'
+            request.uri = 'https://groovy.jfrog.io/'
         }
         while (!found && numTries-- > 0) {
             found = true
             bintray.head {
-                request.uri.path = "/groovy/maven/apache-groovy-sdk-${relVersion}.zip"
+                request.uri.path = "/artifactory/dist-release-local/groovy-zips/apache-groovy-sdk-${relVersion}.zip"
                 response.failure { fs ->
                     sleep delay
                     found = false
                 }
             }
         }
-        assert found, 'Timed out waiting for bintray publish/sync - please check manually'
+        assert found, 'Timed out waiting for artifactory publish/sync - please check manually'
     }
 }
-sdkReleaseVersion.dependsOn waitForBintrayPublication
+sdkReleaseVersion.dependsOn waitForArtifactoryZipPublication
 
+/*
 task synchronizeWithMavenCentral(dependsOn: promoteOnBintray) {
     group = "Post-passed phase"
     description = "Syncs with Maven Central/Sonatype"
@@ -236,27 +261,7 @@ and progress through process manually -> Close -> Publish ... under staging repo
     }
 }
 synchronizeWithMavenCentral.onlyIf{ !apacheGroupId }
-
-task publishZipsOnBintray(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
-    group = "Post-passed phase"
-    description = "Publish distribution zips to bintray"
-    doLast {
-        def bintray = HttpBuilder.configure {
-            request.uri = 'https://api.bintray.com'
-            request.headers['Authorization'] = 'Basic ' + "$bintrayUser:$bintrayKey".getBytes('iso-8859-1').encodeBase64()
-        }
-        fileTree("$distParentDir/distributions").files.each { File f ->
-            println "Uploading $f.name"
-            bintray.put {
-                request.uri.path = "/content/groovy/maven/groovy/$relVersion/${f.name}"
-                request.body = f.bytes
-                request.contentType = 'application/octet-stream'
-            }
-        }
-        println "Zips uploaded! You may need to release manually."
-        // TODO automate release
-    }
-}
+*/
 
 task cleanSvnReleaseWorkspace(type: Delete, dependsOn: assumesRelVersion) {
     delete releaseWorkspaceRoot
@@ -427,7 +432,7 @@ task waitForWebsitePublication(dependsOn: pushGroovyWebsite) {
 }
 waitForWebsitePublication.onlyIf{ releaseBuild }
 
-task publishToSDKman(dependsOn: [synchronizeWithMavenCentral, publishZipsOnBintray, uploadToApacheReleaseServer, waitForWebsitePublication, maybeUpdateDocumentationSymlink, sdkReleaseVersion]) {
+task publishToSDKman(dependsOn: [/*synchronizeWithMavenCentral,*/ publishZipsOnArtifactory, uploadToApacheReleaseServer, waitForWebsitePublication, maybeUpdateDocumentationSymlink, sdkReleaseVersion]) {
     group = "Post-passed phase"
     description = "Publishes the release on SDKman"
 }
