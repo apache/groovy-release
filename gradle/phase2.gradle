@@ -217,12 +217,12 @@ task waitForArtifactoryZipPublication(dependsOn: [publishZipsOnArtifactory/*, pr
         def found = false
         def delay = 30000 // 1/2 a minute
         def numTries = 60 // wait for up to 30 mins
-        def bintray = HttpBuilder.configure {
+        def artifactory = HttpBuilder.configure {
             request.uri = 'https://groovy.jfrog.io/'
         }
         while (!found && numTries-- > 0) {
             found = true
-            bintray.head {
+            artifactory.head {
                 request.uri.path = "/artifactory/dist-release-local/groovy-zips/apache-groovy-sdk-${relVersion}.zip"
                 response.failure { fs ->
                     sleep delay

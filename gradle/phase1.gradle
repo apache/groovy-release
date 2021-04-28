@@ -145,7 +145,7 @@ task updateVersionProperties(dependsOn: [assumesPropsSet, createReleaseBranch]) 
 // use Exec rather the GradleBuild to ensure we use the correct gradle version for the groovy version being built
 task buildAndUploadStep1(type: Exec, dependsOn: [assumesPropsSet, updateVersionProperties, checkCompatibility]) {
     group = "Pre-vote phase"
-    description = "Builds Apache Groovy and publishes the Maven artifacts to the staging repository on Bintray"
+    description = "Builds Apache Groovy and publishes the Maven artifacts to the Artifactory staging repository"
     workingDir stagingDir
     ext.theArgs = []
     if (Os.isFamily(Os.FAMILY_WINDOWS)) {
