@@ -1,11 +1,9 @@
-import groovyx.net.http.HttpBuilder
 import org.ajoberstar.grgit.Credentials
 import org.ajoberstar.grgit.util.JGitUtil
 import org.apache.tools.ant.taskdefs.condition.Os
 
 buildscript {
     repositories {
-        jcenter()
         maven {
             url "https://plugins.gradle.org/m2/"
         }
@@ -14,7 +12,6 @@ buildscript {
     dependencies {
         classpath "org.ajoberstar:grgit:${getProperty('version.grgit')}"
         classpath "at.bxm.gradleplugins:gradle-svntools-plugin:${getProperty('version.svntools')}"
-        classpath "io.github.http-builder-ng:http-builder-ng-okhttp:${getProperty('version.httpbuilderng')}"
         classpath "org.hidetake:gradle-ssh-plugin:${getProperty('version.sshplugin')}"
         classpath "gradle.plugin.io.sdkman:gradle-sdkvendor-plugin:${getProperty('version.sdkmanplugin')}"
     }
@@ -130,14 +127,11 @@ task populateFromCentral(dependsOn: assumesPropsSet) {
 task unreleaseOnJira(dependsOn: jiraCheckPhase2) {
     description = "Unrelease on Jira if the VOTE is cancelled"
     doLast {
-        HttpBuilder.configure {
-            request.uri = 'https://issues.apache.org'
-            request.auth.basic apacheUser, apachePassword
-        }.put {
-            request.uri.path = "/jira/rest/api/2/version/$versionId"
-            request.body = /{ "released": false, "releaseDate": null }/
-            request.contentType = 'application/json'
-        }
+        def client = HttpUtil.newClient()
+        def request = HttpUtil.putRequest("https://issues.apache.org/jira/rest/api/2/version/$versionId",
+                /{ "released": false, "releaseDate": null }/, apacheUser, apachePassword)
+        def response = HttpUtil.send(client, request)
+        assert response.statusCode() == 200
     }
 }
 

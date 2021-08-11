@@ -3,7 +3,6 @@ import at.bxm.gradleplugins.svntools.tasks.SvnAdd
 import at.bxm.gradleplugins.svntools.tasks.SvnCheckout
 import at.bxm.gradleplugins.svntools.tasks.SvnCommit
 import at.bxm.gradleplugins.svntools.tasks.SvnVersion
-import groovyx.net.http.HttpBuilder
 import org.ajoberstar.grgit.Credentials
 import org.ajoberstar.grgit.Person
 import org.ajoberstar.grgit.util.JGitUtil
@@ -11,7 +10,6 @@ import org.apache.tools.ant.taskdefs.condition.Os
 
 buildscript {
     repositories {
-        jcenter()
         maven {
             url "https://plugins.gradle.org/m2/"
         }
@@ -20,7 +18,6 @@ buildscript {
     dependencies {
         classpath "org.ajoberstar:grgit:${getProperty('version.grgit')}"
         classpath "at.bxm.gradleplugins:gradle-svntools-plugin:${getProperty('version.svntools')}"
-        classpath "io.github.http-builder-ng:http-builder-ng-okhttp:${getProperty('version.httpbuilderng')}"
         classpath "org.hidetake:gradle-ssh-plugin:${getProperty('version.sshplugin')}"
         classpath "gradle.plugin.io.sdkman:gradle-sdkvendor-plugin:${getProperty('version.sdkmanplugin')}"
     }
@@ -83,15 +80,12 @@ task checkCompatibility(type: Exec, dependsOn: [assumesBranch, checkout]) {
 
 task jiraPrecheck(dependsOn: assumesRelVersion) {
     doLast {
-        def prefix = '/jira/rest/api/2'
-        def jira = HttpBuilder.configure {
-            request.uri = 'https://issues.apache.org'
-            request.auth.basic apacheUser, apachePassword
-        }
-        def resp = jira.get {
-            request.uri.path = "$prefix/project/GROOVY/versions"
-        }
-        def versionFields = resp.find { it.name == relVersion }
+        def prefix = 'https://issues.apache.org/jira/rest/api/2'
+        def client = HttpUtil.newClient()
+        def request = HttpUtil.getRequest("$prefix/project/GROOVY/versions", apacheUser, apachePassword)
+        def response = HttpUtil.send(client, request)
+        assert response.statusCode() == 200
+        def versionFields = response.json.find { it.name == relVersion }
         assert versionFields, "Version $relVersion not found in Jira!"
         if (!project.hasProperty('skipJiraReleaseCheck')) {
             assert !versionFields.released, "Version $relVersion already released!"
@@ -99,16 +93,17 @@ task jiraPrecheck(dependsOn: assumesRelVersion) {
         project.ext.versionId = versionFields.id
         project.ext.projectId = versionFields.projectId
 
-        resp = jira.get {
-            request.uri.path = "$prefix/version/$versionId/unresolvedIssueCount"
+        request = HttpUtil.getRequest("$prefix/version/$versionId/unresolvedIssueCount", apacheUser, apachePassword)
+        response = HttpUtil.send(client, request)
+        assert response.statusCode() == 200
+        if (response.json.issuesUnresolvedCount) {
+            logger.warn "Warning found $response.json.issuesUnresolvedCount unresolved issues for version $relVersion"
         }
-        if (resp.issuesUnresolvedCount) {
-            logger.warn "Warning found $resp.issuesUnresolvedCount unresolved issues for version $relVersion"
-        }
-        resp = jira.get {
-            request.uri.path = "$prefix/version/$versionId/relatedIssueCounts"
-        }
-        project.ext.fixCount = resp.issuesFixedCount
+
+        request = HttpUtil.getRequest("$prefix/version/$versionId/relatedIssueCounts", apacheUser, apachePassword)
+        response = HttpUtil.send(client, request)
+        assert response.statusCode() == 200
+        project.ext.fixCount = response.json.issuesFixedCount
     }
 }
 
@@ -280,14 +275,11 @@ task releaseOnJira(dependsOn: [assumesRelVersion, jiraPrecheck, createAndPushTag
     group = "Pre-vote phase"
     description = "Releases the version on JIRA"
     doLast {
-        HttpBuilder.configure {
-            request.uri = 'https://issues.apache.org'
-            request.auth.basic apacheUser, apachePassword
-        }.put {
-            request.uri.path = "/jira/rest/api/2/version/$versionId"
-            request.body = /{ "released": true, "releaseDate": "$now" }/
-            request.contentType = 'application/json'
-        }
+        def client = HttpUtil.newClient()
+        def request = HttpUtil.putRequest("https://issues.apache.org/jira/rest/api/2/version/$versionId",
+                /{ "released": true, "releaseDate": "$now" }/, apacheUser, apachePassword)
+        def response = HttpUtil.send(client, request)
+        assert response.statusCode() == 200
     }
 }
 
