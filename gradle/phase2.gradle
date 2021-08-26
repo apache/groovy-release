@@ -7,9 +7,6 @@ import org.ajoberstar.grgit.Credentials
 
 buildscript {
     apply from: "gradle/buildscript.gradle", to: buildscript
-    dependencies {
-        classpath "io.github.http-builder-ng:http-builder-ng-okhttp:${getProperty('version.httpbuilderng')}"
-    }
 }
 
 ext.grgitClass = org.ajoberstar.grgit.Grgit
