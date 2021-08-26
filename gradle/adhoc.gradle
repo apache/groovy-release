@@ -3,19 +3,10 @@ import org.ajoberstar.grgit.util.JGitUtil
 import org.apache.tools.ant.taskdefs.condition.Os
 
 buildscript {
-    repositories {
-        maven {
-            url "https://plugins.gradle.org/m2/"
-        }
-    }
-
-    dependencies {
-        classpath "org.ajoberstar:grgit:${getProperty('version.grgit')}"
-        classpath "at.bxm.gradleplugins:gradle-svntools-plugin:${getProperty('version.svntools')}"
-        classpath "org.hidetake:gradle-ssh-plugin:${getProperty('version.sshplugin')}"
-        classpath "gradle.plugin.io.sdkman:gradle-sdkvendor-plugin:${getProperty('version.sdkmanplugin')}"
-    }
+    apply from: "gradle/buildscript.gradle", to: buildscript
 }
+
+ext.grgitClass = org.ajoberstar.grgit.Grgit
 
 ssh.settings {
     dryRun = project.hasProperty('dryRun')
@@ -68,7 +59,6 @@ task websitePublishUserSite(dependsOn: websiteBuild) {
 task untagVersion(dependsOn: assumesPropsSet) {
     doLast {
         def apacheCredentials = new Credentials(apacheUser, apachePassword)
-//        def apacheCredentials = new Credentials(username: apacheUser, password: apachePassword)
         def grgit = grgitClass.open(dir: stagingDir, creds: apacheCredentials)
         def tagName = "GROOVY_$underVersion"
         def tag = null

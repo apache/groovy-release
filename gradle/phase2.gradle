@@ -3,29 +3,16 @@ import at.bxm.gradleplugins.svntools.tasks.SvnAdd
 import at.bxm.gradleplugins.svntools.tasks.SvnCheckout
 import at.bxm.gradleplugins.svntools.tasks.SvnCommit
 import at.bxm.gradleplugins.svntools.tasks.SvnDelete
-import groovyx.net.http.HttpBuilder
 import org.ajoberstar.grgit.Credentials
 
 buildscript {
-    repositories {
-        jcenter()
-        maven {
-            url "https://plugins.gradle.org/m2/"
-        }
-    }
-
+    apply from: "gradle/buildscript.gradle", to: buildscript
     dependencies {
-        classpath "org.ajoberstar:grgit:${getProperty('version.grgit')}"
-        classpath "at.bxm.gradleplugins:gradle-svntools-plugin:${getProperty('version.svntools')}"
         classpath "io.github.http-builder-ng:http-builder-ng-okhttp:${getProperty('version.httpbuilderng')}"
-        classpath "org.hidetake:gradle-ssh-plugin:${getProperty('version.sshplugin')}"
-        classpath "gradle.plugin.io.sdkman:gradle-sdkvendor-plugin:${getProperty('version.sdkmanplugin')}"
     }
 }
 
-apply plugin: "at.bxm.svntools"
-apply plugin: "org.hidetake.ssh"
-apply plugin: "io.sdkman.vendors"
+ext.grgitClass = org.ajoberstar.grgit.Grgit
 
 svntools {
     username = apacheUser
@@ -60,30 +47,25 @@ sdkman {
 
 task jiraCheckPhase2(dependsOn: assumesRelVersion) {
     doLast {
-        def prefix = '/jira/rest/api/2'
-        def jira = HttpBuilder.configure {
-            request.uri = 'https://issues.apache.org'
-            request.auth.basic apacheUser, apachePassword
-        }
-        def resp = jira.get {
-            request.uri.path = "$prefix/project/GROOVY/versions"
-        }
-        def versionFields = resp.find { it.name == relVersion }
+        def prefix = 'https://issues.apache.org/jira/rest/api/2'
+        def client = HttpUtil.newClient()
+        def request = HttpUtil.getRequest("$prefix/project/GROOVY/versions", apacheUser, apachePassword)
+        def response = HttpUtil.send(client, request)
+        assert response.statusCode() == 200
+        def versionFields = response.json.find { it.name == relVersion }
         assert versionFields, "Version $relVersion not found in Jira!"
         assert versionFields.released, "Version $relVersion not yet released!"
         project.ext.versionId = versionFields.id
         project.ext.projectId = versionFields.projectId
 
-        resp = jira.get {
-            request.uri.path = "$prefix/version/$versionId/unresolvedIssueCount"
-        }
-        if (resp.issuesUnresolvedCount) {
+        request = HttpUtil.getRequest("$prefix/version/$versionId/unresolvedIssueCount", apacheUser, apachePassword)
+        response = HttpUtil.send(client, request)
+        if (response.json.issuesUnresolvedCount) {
             logger.warn "Warning found $resp.issuesUnresolvedCount unresolved issues for version $relVersion"
         }
-        resp = jira.get {
-            request.uri.path = "$prefix/version/$versionId/relatedIssueCounts"
-        }
-        project.ext.fixCount = resp.issuesFixedCount
+        request = HttpUtil.getRequest("$prefix/version/$versionId/relatedIssueCounts", apacheUser, apachePassword)
+        response = HttpUtil.send(client, request)
+        project.ext.fixCount = response.json.issuesFixedCount
     }
 }
 
@@ -194,17 +176,13 @@ task publishZipsOnArtifactory(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
     group = "Post-passed phase"
     description = "Publish distribution zips to Groovy artifactory instance"
     doLast {
-        def artifactory = HttpBuilder.configure {
-            request.uri = 'https://groovy.jfrog.io/'
-            request.headers['Authorization'] = 'Basic ' + "$artifactoryUser:$artifactoryPassword".getBytes('iso-8859-1').encodeBase64()
-        }
+        def prefix = 'https://groovy.jfrog.io/artifactory/dist-release-local/groovy-zips'
+        def client = HttpUtil.newClient()
         fileTree("$distParentDir/distributions").files.each { File f ->
             println "Uploading $f.name"
-            artifactory.put {
-                request.uri.path = "/artifactory/dist-release-local/groovy-zips/${f.name}"
-                request.body = f.bytes
-                request.contentType = 'application/octet-stream'
-            }
+            def request = HttpUtil.putRequest(prefix, f, apacheUser, apachePassword)
+            def response = HttpUtil.send(client, request)
+            assert response.statusCode() == 200
         }
         println "Zips uploaded! You may need to release manually."
     }
@@ -214,22 +192,10 @@ task waitForArtifactoryZipPublication(dependsOn: [publishZipsOnArtifactory/*, pr
     group = "Post-passed phase"
     description = "Polls the artifactory instance website to check if it is released"
     doLast {
-        def found = false
         def delay = 30000 // 1/2 a minute
         def numTries = 60 // wait for up to 30 mins
-        def artifactory = HttpBuilder.configure {
-            request.uri = 'https://groovy.jfrog.io/'
-        }
-        while (!found && numTries-- > 0) {
-            found = true
-            artifactory.head {
-                request.uri.path = "/artifactory/dist-release-local/groovy-zips/apache-groovy-sdk-${relVersion}.zip"
-                response.failure { fs ->
-                    sleep delay
-                    found = false
-                }
-            }
-        }
+        def url = "https://groovy.jfrog.io/artifactory/dist-release-local/groovy-zips/apache-groovy-sdk-${relVersion}.zip"
+        def found = HttpUtil.awaitPublication(url, apacheUser, apachePassword, delay, numTries)
         assert found, 'Timed out waiting for artifactory publish/sync - please check manually'
     }
 }
@@ -396,7 +362,6 @@ task pushGroovyWebsite(dependsOn: updateGroovySitemap) {
     group = "Post-passed phase"
     description = "Pushes the Groovy website so that the new website is published"
     doLast {
-//        def githubCredentials = new Credentials(username: githubUser, password: githubPassword)
         def githubCredentials = new Credentials(githubUser, githubPassword)
         def grgit = grgitClass.open(dir: stagingWebsiteDir, creds: githubCredentials)
         grgit.add(patterns: ['sitemap.groovy'])
@@ -411,22 +376,10 @@ task waitForWebsitePublication(dependsOn: pushGroovyWebsite) {
     group = "Post-passed phase"
     description = "Polls the Groovy website to check if the changelog for this version is published"
     doLast {
-        def found = false
         def delay = 30000 // 1/2 a minute
         def numTries = 60 // wait for up to 30 mins
-        def usersite = HttpBuilder.configure {
-            request.uri = 'https://groovy-lang.org'
-        }
-        while (!found && numTries-- > 0) {
-            found = true
-            usersite.head {
-                request.uri.path = "/changelogs/changelog-${relVersion}.html"
-                response.failure { fs ->
-                    sleep delay
-                    found = false
-                }
-            }
-        }
+        def url = "https://groovy-lang.org/changelogs/changelog-${relVersion}.html"
+        def found = HttpUtil.awaitPublication(url, apacheUser, apachePassword, delay, numTries)
         assert found, 'Timed out waiting for website to be published - please check manually'
     }
 }
@@ -449,23 +402,19 @@ task createNextVersionInJira(dependsOn: [jiraCheckPhase2]) {
     group = "Post-passed phase"
     description = "Make sure that Jira is ready for the next version on this branch"
     doLast {
-        def prefix = '/jira/rest/api/2'
-        def jira = HttpBuilder.configure {
-            request.uri = 'https://issues.apache.org'
-            request.auth.basic apacheUser, apachePassword
-        }
-        def resp = jira.get {
-            request.uri.path = "$prefix/project/GROOVY/versions"
-        }
-        def versionFields = resp.find { it.name == nextVersion }
+        def prefix = 'https://issues.apache.org/jira/rest/api/2'
+        def client = HttpUtil.newClient()
+        def request = HttpUtil.getRequest("$prefix/project/GROOVY/versions", apacheUser, apachePassword)
+        def response = HttpUtil.send(client, request)
+        assert response.statusCode() == 200
+        def versionFields = response.json.find { it.name == nextVersion }
         if (versionFields) {
             println "Version $nextVersion already found in Jira!"
         } else {
-            jira.post {
-                request.uri.path = "$prefix/version"
-                request.body = /{ "name": "$nextVersion", "project": "GROOVY", "projectId": $projectId }/
-                request.contentType = 'application/json'
-            }
+            def body = /{ "name": "$nextVersion", "project": "GROOVY", "projectId": $projectId }/
+            request = HttpUtil.postRequest("$prefix/version", body, apacheUser, apachePassword)
+            response = HttpUtil.send(client, request)
+            assert response.statusCode() == 200
         }
     }
 }

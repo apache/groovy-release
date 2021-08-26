@@ -1,4 +1,4 @@
-import org.apache.tools.ant.taskdefs.condition.Os
+//import org.apache.tools.ant.taskdefs.condition.Os
 
 /**
  * Phase1 is invoked with:
@@ -54,26 +54,22 @@ import org.apache.tools.ant.taskdefs.condition.Os
  * <li>The KEYS file is currently assumed to be updated manually outside this build script</li>
  * </ul>
  */
-
 buildscript {
     repositories {
-        jcenter()
-        maven {
-            url "https://plugins.gradle.org/m2/"
-        }
+        mavenCentral()
     }
 
     dependencies {
-        classpath "org.ajoberstar:grgit:${getProperty('version.grgit')}"
-        classpath "at.bxm.gradleplugins:gradle-svntools-plugin:${getProperty('version.svntools')}"
-        classpath "io.github.http-builder-ng:http-builder-ng-okhttp:${getProperty('version.httpbuilderng')}"
-        classpath "org.hidetake:gradle-ssh-plugin:${getProperty('version.sshplugin')}"
-        classpath "gradle.plugin.io.sdkman:gradle-sdkvendor-plugin:${getProperty('version.sdkmanplugin')}"
+        classpath 'javax.xml.bind:jaxb-api:2.3.1'
     }
 }
 
+plugins {
+    id 'org.hidetake.ssh' version '2.10.1'
+    id "io.sdkman.vendors" version "1.2.0"
+}
+
 ext {
-    grgitClass = org.ajoberstar.grgit.Grgit
     repoBase = 'https://gitbox.apache.org/repos/asf'
     repoUri = "$repoBase/groovy.git"
     websiteRepo = 'https://gitbox.apache.org/repos/asf/groovy-website.git'
