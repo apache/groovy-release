@@ -411,7 +411,7 @@ task createNextVersionInJira(dependsOn: [jiraCheckPhase2]) {
             def body = /{ "name": "$nextVersion", "project": "GROOVY", "projectId": $projectId }/
             request = HttpUtil.postRequest("$prefix/version", body, apacheUser, apachePassword)
             response = HttpUtil.send(client, request)
-            assert response.statusCode() == 200
+            assert response.statusCode() in [200, 201]
         }
     }
 }
