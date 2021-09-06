@@ -58,7 +58,7 @@ task jiraCheckPhase2(dependsOn: assumesRelVersion) {
         request = HttpUtil.getRequest("$prefix/version/$versionId/unresolvedIssueCount", apacheUser, apachePassword)
         response = HttpUtil.send(client, request)
         if (response.json.issuesUnresolvedCount) {
-            logger.warn "Warning found $resp.issuesUnresolvedCount unresolved issues for version $relVersion"
+            logger.warn "Warning found $response.json.issuesUnresolvedCount unresolved issues for version $relVersion"
         }
         request = HttpUtil.getRequest("$prefix/version/$versionId/relatedIssueCounts", apacheUser, apachePassword)
         response = HttpUtil.send(client, request)
@@ -177,9 +177,9 @@ task publishZipsOnArtifactory(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
         def client = HttpUtil.newClient()
         fileTree("$distParentDir/distributions").files.each { File f ->
             println "Uploading $f.name"
-            def request = HttpUtil.putRequest(prefix, f, apacheUser, apachePassword)
+            def request = HttpUtil.putRequest(prefix, f, artifactoryUser, artifactoryPassword)
             def response = HttpUtil.send(client, request)
-            assert response.statusCode() == 200
+            assert response.statusCode() in [200, 201]
         }
         println "Zips uploaded! You may need to release manually."
     }
@@ -192,7 +192,7 @@ task waitForArtifactoryZipPublication(dependsOn: [publishZipsOnArtifactory/*, pr
         def delay = 30000 // 1/2 a minute
         def numTries = 60 // wait for up to 30 mins
         def url = "https://groovy.jfrog.io/artifactory/dist-release-local/groovy-zips/apache-groovy-sdk-${relVersion}.zip"
-        def found = HttpUtil.awaitPublication(url, apacheUser, apachePassword, delay, numTries)
+        def found = HttpUtil.awaitPublication(url, artifactoryUser, artifactoryPassword, delay, numTries)
         assert found, 'Timed out waiting for artifactory publish/sync - please check manually'
     }
 }
