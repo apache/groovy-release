@@ -7,6 +7,7 @@ buildscript {
 }
 
 ext.grgitClass = org.ajoberstar.grgit.Grgit
+ext.modules = [:]
 
 ssh.settings {
     dryRun = project.hasProperty('dryRun')
@@ -74,33 +75,80 @@ task untagVersion(dependsOn: assumesPropsSet) {
     }
 }
 
-// useful when re-populating artifactory/jcentral from a partial build failure
-task populateFromCentral(dependsOn: assumesPropsSet) {
-    doLast {
-        def type1 = ['.pom', '.pom.asc']
-        def type2 = ['.jar', '.jar.asc', '.pom', '.pom.asc']
-        def type3 = ['.zip', '.zip.asc', '.pom', '.pom.asc']
-        def type4 = ['.jar', '.jar.asc', '.pom', '.pom.asc', '-grooid.jar', '-grooid.jar.asc']
-        def modules = [
-                'groovy': type4, 'groovy-all': type1,
-                'groovy-ant': type2, 'groovy-astbuilder': type2,
-                'groovy-binary': type3, 'groovy-bom': type1,
-                'groovy-bsf': type2, 'groovy-cli-commons': type2,
-                'groovy-cli-picocli': type2, 'groovy-console': type2,
-                'groovy-contracts': type2, 'groovy-datetime': type2,
-                'groovy-dateutil': type2, 'groovy-docgenerator': type2,
-                'groovy-ginq': type2, 'groovy-groovydoc': type2,
-                'groovy-groovysh': type2, 'groovy-jaxb': type2,
-                'groovy-jmx': type2, 'groovy-json': type2,
-                'groovy-jsr223': type2, 'groovy-macro': type2,
-                'groovy-macro-library': type2, 'groovy-nio': type2,
-                'groovy-servlet': type2, 'groovy-sql': type2,
-                'groovy-swing': type2, 'groovy-templates': type2,
-                'groovy-test': type4, 'groovy-test-junit5': type2,
-                'groovy-testng': type2, 'groovy-typecheckers': type2,
-                'groovy-xml': type2, 'groovy-yaml': type2
+task setupModules(dependsOn: assumesPropsSet) {
+    def type1 = ['.pom', '.pom.asc']
+    def type1b = ['.pom', '.pom.asc', '-sources.jar', '-sources.jar.asc', '-javadoc.jar', '-javadoc.jar.asc', '-groovydoc.jar', '-groovydoc.jar.asc']
+    def type2 = ['.jar', '.jar.asc', '.pom', '.pom.asc', '-sources.jar', '-sources.jar.asc', '-indy.jar', '-indy.jar.asc', '-javadoc.jar', '-javadoc.jar.asc', '-groovydoc.jar', '-groovydoc.jar.asc']
+    def type3 = ['.zip', '.zip.asc', '.pom', '.pom.asc']
+    def type4 = ['.jar', '.jar.asc', '.pom', '.pom.asc', '-grooid.jar', '-grooid.jar.asc', '-sources.jar', '-sources.jar.asc', '-indy.jar', '-indy.jar.asc', '-javadoc.jar', '-javadoc.jar.asc', '-groovydoc.jar', '-groovydoc.jar.asc']
+    modules = [
+            'groovy'            : type4, 'groovy-all': type1b,
+            'groovy-ant'        : type2,
+            'groovy-binary'     : type3, 'groovy-bom': type1,
+            'groovy-cli-commons': type2,
+            'groovy-cli-picocli': type2, 'groovy-console': type2,
+            'groovy-datetime'   : type2,
+            'groovy-dateutil'   : type2, 'groovy-docgenerator': type2,
+            'groovy-groovydoc'  : type2,
+            'groovy-groovysh'   : type2, 'groovy-jaxb': type2,
+            'groovy-jmx'        : type2,
+            'groovy-json'       : type2,
+            'groovy-jsr223'     : type2, 'groovy-macro': type2,
+            'groovy-nio'        : type2,
+            'groovy-servlet'    : type2, 'groovy-sql': type2,
+            'groovy-swing'      : type2, 'groovy-templates': type2,
+            'groovy-test'       : type4, 'groovy-test-junit5': type2,
+            'groovy-testng'     : type2,
+            'groovy-xml'        : type2
+    ]
+    if (relVersion[0] < '3') {
+        modules << ['groovy-json-direct': type2]
+    }
+    if (relVersion[0] < '4') {
+        modules << ['groovy-bsf': type2]
+    }
+    if (relVersion[0] >= '3') {
+        modules << [
+                'groovy-astbuilder': type2,
+                'groovy-yaml': type2
         ]
-        def prefix = 'https://repo1.maven.org/maven2/org/apache/groovy'
+    }
+    if (relVersion.startsWith('4')) {
+        modules += [
+                'groovy-contracts': type2,
+                'groovy-ginq': type2,
+                'groovy-macro-library': type2,
+                'groovy-toml': type2,
+                'groovy-typecheckers': type2
+        ]
+    }
+}
+
+task zipFromArtifactory(dependsOn: setupModules) {
+    doLast {
+        def groupId = apacheGroupId ? 'org/apache/groovy' : 'org/codehaus/groovy'
+        def prefix = "https://groovy.jfrog.io/artifactory/libs-release-local/$groupId"
+        def artifactBase = file("$buildDir/artifacts-$relVersion").absolutePath
+        def zipDir = file("$buildDir/zips-$relVersion").absolutePath
+        file(zipDir).mkdirs()
+        println "Artifact base dir: $artifactBase, zips: $zipDir"
+        modules.each { m, suffixes ->
+            def artifactDir = "$artifactBase/$m"
+            file(artifactDir).mkdirs()
+            println "Processing ${suffixes.size()} artifacts for $m"
+            suffixes.each { suffix ->
+                ant.get(src: "$prefix/$m/$relVersion/$m-$relVersion$suffix", dest: artifactDir)
+                ant.zip(destfile: "$zipDir/$m-${relVersion}.zip", basedir: artifactDir)
+            }
+        }
+    }
+}
+
+// useful when re-populating artifactory/jcentral from a partial build failure
+task populateFromCentral(dependsOn: setupModules) {
+    doLast {
+        def groupId = apacheGroupId ? 'org/apache/groovy' : 'org/codehaus/groovy'
+        def prefix = "https://repo1.maven.org/maven2/$groupId"
         modules.each { m, suffixes ->
             println "Processing ${suffixes.size()} artifacts for $m"
             suffixes.each { suffix ->
