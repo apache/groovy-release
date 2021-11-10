@@ -33,7 +33,6 @@ remotes {
 }
 
 sdkman {
-    api = "https://vendors.sdkman.io/"
     consumerKey = findProperty('gvm.consumerKey')
     consumerToken = findProperty('gvm.consumerPassword')
     candidate = "groovy"
