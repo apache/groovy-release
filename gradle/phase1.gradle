@@ -46,7 +46,7 @@ task confirmVersion(dependsOn: [assumesPropsSet, checkout]) {
     description = "Confirm version to release (assumes -PreleaseVersion=version_to_release)"
     doLast {
         def propsFile = file("$stagingDir/gradle.properties")
-        def versionLines = propsFile.text.readLines().findAll { it.matches(/groovy.*Version.*/) }
+        def versionLines = propsFile.text.readLines().findAll { it.matches(/groovyVersion.*|groovyBundleVersion.*/) }
         def normalVersion = /(?ism).*$numVersion[a-zA-Z\-]*\.SNAPSHOT.*/
         def bundleVersion = /(?ism).*$numVersion[a-zA-Z\-]*-SNAPSHOT.*/
         versionLines.each {
