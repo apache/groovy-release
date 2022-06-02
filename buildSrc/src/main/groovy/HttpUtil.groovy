@@ -22,6 +22,13 @@ class HttpUtil {
                 .build()
     }
 
+    static HttpRequest headRequest(url) {
+        HttpRequest.newBuilder()
+                .uri(new URI(url))
+                .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                .build()
+    }
+
     static HttpRequest headRequest(url, user, password) {
         HttpRequest.newBuilder()
                 .uri(new URI(url))

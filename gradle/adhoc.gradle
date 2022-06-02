@@ -90,7 +90,7 @@ task setupModules(dependsOn: assumesPropsSet) {
             'groovy-datetime'   : type2,
             'groovy-dateutil'   : type2, 'groovy-docgenerator': type2,
             'groovy-groovydoc'  : type2,
-            'groovy-groovysh'   : type2, 'groovy-jaxb': type2,
+            'groovy-groovysh'   : type2,
             'groovy-jmx'        : type2,
             'groovy-json'       : type2,
             'groovy-jsr223'     : type2, 'groovy-macro': type2,
@@ -105,7 +105,7 @@ task setupModules(dependsOn: assumesPropsSet) {
         modules << ['groovy-json-direct': type2]
     }
     if (relVersion[0] < '4') {
-        modules << ['groovy-bsf': type2]
+        modules << ['groovy-bsf': type2, 'groovy-jaxb': type2]
     }
     if (relVersion[0] >= '3') {
         modules << [
@@ -113,8 +113,8 @@ task setupModules(dependsOn: assumesPropsSet) {
                 'groovy-yaml': type2
         ]
     }
-    if (relVersion.startsWith('4')) {
-        modules += [
+    if (relVersion[0] >= '4') {
+        modules << [
                 'groovy-contracts': type2,
                 'groovy-ginq': type2,
                 'groovy-macro-library': type2,
@@ -140,6 +140,21 @@ task zipFromArtifactory(dependsOn: setupModules) {
                 ant.get(src: "$prefix/$m/$relVersion/$m-$relVersion$suffix", dest: artifactDir)
                 ant.zip(destfile: "$zipDir/$m-${relVersion}.zip", basedir: artifactDir)
             }
+        }
+    }
+}
+
+task checkMavenStatus(dependsOn: setupModules) {
+    doLast {
+        def prefix = 'https://repo1.maven.org/maven2'
+        def groupId = apacheGroupId ? 'org/apache/groovy' : 'org/codehaus/groovy'
+        def client = HttpUtil.newClient()
+        println 'Checking repo1 on Maven Central'
+        modules.each { m, suffixes ->
+            def pomUrl = "$prefix/$groupId/$m/$relVersion/$m-${relVersion}.pom"
+            def request = HttpUtil.headRequest(pomUrl)
+            def response = HttpUtil.send(client, request)
+            println "$m ${response.statusCode() == 200 ? 'found' : 'NOT found!!!'}"
         }
     }
 }
