@@ -141,6 +141,7 @@ task zipFromArtifactory(dependsOn: setupModules) {
                 ant.zip(destfile: "$zipDir/$m-${relVersion}.zip", basedir: artifactDir)
             }
         }
+        println 'Upload "Artifact Bundles" manually at https://oss.sonatype.org/ using Central credentials'
     }
 }
 
