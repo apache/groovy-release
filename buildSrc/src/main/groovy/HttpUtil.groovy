@@ -47,6 +47,15 @@ class HttpUtil {
                 .build()
     }
 
+    static HttpRequest deleteRequest(url, user, password) {
+        HttpRequest.newBuilder()
+                .uri(new URI(url))
+                .header('Authorization', 'Basic ' + "$user:$password".getBytes('iso-8859-1').encodeBase64())
+                .header('Content-Type', 'application/json')
+                .DELETE()
+                .build()
+    }
+
     static HttpRequest postRequest(url, String json, user, password) {
         def body = HttpRequest.BodyPublishers.ofString(json)
         HttpRequest.newBuilder()
