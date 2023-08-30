@@ -26,7 +26,8 @@ remotes {
 }
 
 // use Exec rather than GradleBuild to avoid any issues between gradle versions
-task websiteBuild(type: Exec, dependsOn: [assumesRelVersion, checkoutGroovyWebsite]) {
+tasks.register('websiteBuild', Exec) {
+    dependsOn([assumesRelVersion, checkoutGroovyWebsite])
     workingDir stagingWebsiteDir
     def theArgs = []
     if (Os.isFamily(Os.FAMILY_WINDOWS)) {
@@ -41,7 +42,8 @@ task websiteBuild(type: Exec, dependsOn: [assumesRelVersion, checkoutGroovyWebsi
 
 // NOTE: not normally needed as part of a release since the CI server does
 // this automatically upon commit of the changed website
-task websitePublishUserSite(dependsOn: websiteBuild) {
+tasks.register('websitePublishUserSite') {
+    dependsOn websiteBuild
     description = "Manual upload of documentation to the Groovy website server"
     doLast {
         println "WARNING: result might be overridden by CI server"
@@ -57,7 +59,8 @@ task websitePublishUserSite(dependsOn: websiteBuild) {
     }
 }
 
-task untagVersion(dependsOn: assumesPropsSet) {
+tasks.register('untagVersion') {
+    dependsOn assumesPropsSet
     doLast {
         def apacheCredentials = new Credentials(apacheUser, apachePassword)
         def grgit = grgitClass.open(dir: stagingDir, creds: apacheCredentials)
@@ -75,7 +78,8 @@ task untagVersion(dependsOn: assumesPropsSet) {
     }
 }
 
-task setupModules(dependsOn: assumesPropsSet) {
+tasks.register('setupModules') {
+    dependsOn assumesPropsSet
     def type1 = ['.pom', '.pom.asc']
     def type1b = ['.pom', '.pom.asc', '-sources.jar', '-sources.jar.asc', '-javadoc.jar', '-javadoc.jar.asc', '-groovydoc.jar', '-groovydoc.jar.asc']
     def type2 = ['.jar', '.jar.asc', '.pom', '.pom.asc', '-sources.jar', '-sources.jar.asc', '-indy.jar', '-indy.jar.asc', '-javadoc.jar', '-javadoc.jar.asc', '-groovydoc.jar', '-groovydoc.jar.asc']
@@ -124,7 +128,8 @@ task setupModules(dependsOn: assumesPropsSet) {
     }
 }
 
-task zipFromArtifactory(dependsOn: setupModules) {
+tasks.register('zipFromArtifactory') {
+    dependsOn setupModules
     doLast {
         def groupId = apacheGroupId ? 'org/apache/groovy' : 'org/codehaus/groovy'
         def prefix = "https://groovy.jfrog.io/artifactory/libs-release-local/$groupId"
@@ -145,7 +150,8 @@ task zipFromArtifactory(dependsOn: setupModules) {
     }
 }
 
-task checkMavenStatus(dependsOn: setupModules) {
+tasks.register('checkMavenStatus') {
+    dependsOn setupModules
     doLast {
         def prefix = 'https://repo1.maven.org/maven2'
         def groupId = apacheGroupId ? 'org/apache/groovy' : 'org/codehaus/groovy'
@@ -161,7 +167,8 @@ task checkMavenStatus(dependsOn: setupModules) {
 }
 
 // useful when re-populating artifactory/jcentral from a partial build failure
-task populateFromCentral(dependsOn: setupModules) {
+tasks.register('populateFromCentral') {
+    dependsOn setupModules
     doLast {
         def groupId = apacheGroupId ? 'org/apache/groovy' : 'org/codehaus/groovy'
         def prefix = "https://repo1.maven.org/maven2/$groupId"
@@ -178,7 +185,8 @@ task populateFromCentral(dependsOn: setupModules) {
     }
 }
 
-task unreleaseOnJira(dependsOn: jiraCheckPhase2) {
+tasks.register('unreleaseOnJira') {
+    dependsOn jiraCheckPhase2
     description = "Unrelease on Jira if the VOTE is cancelled"
     doLast {
         def client = HttpUtil.newClient()
@@ -189,7 +197,8 @@ task unreleaseOnJira(dependsOn: jiraCheckPhase2) {
     }
 }
 
-task showInfo(dependsOn: assumesPropsSet) {
+tasks.register('showInfo') {
+    dependsOn assumesPropsSet
     doLast {
         println "branch = $branch"
         println "relVersion = $relVersion"
