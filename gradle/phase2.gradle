@@ -41,7 +41,8 @@ sdkman {
     hashtag = "#groovylang"
 }
 
-task jiraCheckPhase2(dependsOn: assumesRelVersion) {
+tasks.register('jiraCheckPhase2') {
+    dependsOn assumesRelVersion
     doLast {
         def prefix = 'https://issues.apache.org/jira/rest/api/2'
         def client = HttpUtil.newClient()
@@ -168,7 +169,8 @@ task augmentProperties(dependsOn: jiraCheckPhase2) {
 augmentProperties.onlyIf{ apacheGroupId }
 */
 
-task publishZipsOnArtifactory(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
+tasks.register('publishZipsOnArtifactory') {
+    dependsOn([jiraCheckPhase2, assumesRelVersion])
     group = "Post-passed phase"
     description = "Publish distribution zips to Groovy artifactory instance"
     doLast {
@@ -184,7 +186,8 @@ task publishZipsOnArtifactory(dependsOn: [jiraCheckPhase2, assumesRelVersion]) {
     }
 }
 
-task waitForArtifactoryZipPublication(dependsOn: [publishZipsOnArtifactory/*, promoteJarsOnArtifactory*/]) {
+tasks.register('waitForArtifactoryZipPublication') {
+    dependsOn publishZipsOnArtifactory /*, promoteJarsOnArtifactory*/
     group = "Post-passed phase"
     description = "Polls the artifactory instance website to check if it is released"
     doLast {
@@ -225,47 +228,55 @@ and progress through process manually -> Close -> Publish ... under staging repo
 synchronizeWithMavenCentral.onlyIf{ !apacheGroupId }
 */
 
-task cleanSvnReleaseWorkspace(type: Delete, dependsOn: assumesRelVersion) {
+tasks.register('cleanSvnReleaseWorkspace', Delete) {
+    dependsOn assumesRelVersion
     delete releaseWorkspaceRoot
 }
 
-task prepareSvnReleaseWorkspace(type: SvnCheckout, dependsOn: cleanSvnReleaseWorkspace) {
+tasks.register('prepareSvnReleaseWorkspace', SvnCheckout) {
+    dependsOn cleanSvnReleaseWorkspace
     svnUrl = "https://dist.apache.org/repos/dist/release/groovy"
     workspaceDir = releaseWorkspaceRoot
     depth = SvnDepth.FILES // slightly more efficient if we have two concurrent releases (e.g. 2.4.latest, 2.5.0)
 }
 
-task copyReleaseArtifacts(type: Copy, dependsOn: prepareSvnReleaseWorkspace) {
+tasks.register('copyReleaseArtifacts', Copy) {
+    dependsOn prepareSvnReleaseWorkspace
     description = "Copies all files from DEV to RELEASE"
     from(devWorkspace)
     into releaseWorkspace
 }
 
-task addSvnReleaseFiles(type: SvnAdd, dependsOn: copyReleaseArtifacts) {
+tasks.register('addSvnReleaseFiles', SvnAdd) {
+    dependsOn copyReleaseArtifacts
     description = "Adds the changed files to dist svn"
     add releaseWorkspace
     recursive true
 }
 
-task deleteSvnDevFiles(type: SvnDelete, dependsOn: addSvnReleaseFiles) {
+tasks.register('deleteSvnDevFiles', SvnDelete) {
+    dependsOn addSvnReleaseFiles
     description = "Deletes the changed files to svn"
     delete devWorkspace
 }
 
-task commitDeleteFromDevSvn(type: SvnCommit, dependsOn: deleteSvnDevFiles) {
+tasks.register('commitDeleteFromDevSvn', SvnCommit) {
+    dependsOn deleteSvnDevFiles
     description = "Deletes the version from the DEV staging area"
     source << devWorkspaceRoot
     recursive = true
     commitMessage = "Deleting version $relVersion from the DEV staging area"
 }
 
-task commitAddToReleaseSvn(type: SvnCommit, dependsOn: addSvnReleaseFiles) {
+tasks.register('commitAddToReleaseSvn', SvnCommit) {
+    dependsOn addSvnReleaseFiles
     source << releaseWorkspace
     recursive = true
     commitMessage = "Releasing version $relVersion"
 }
 
-task uploadToApacheReleaseServer(dependsOn: [commitDeleteFromDevSvn, commitAddToReleaseSvn]) {
+tasks.register('uploadToApacheReleaseServer') {
+    dependsOn([commitDeleteFromDevSvn, commitAddToReleaseSvn])
     // svntools has no move so add and delete explicitly
     group = "Post-passed phase"
     description = "Moves the artifacts from the DEV svn repo to the RELEASE svn repo"
@@ -277,7 +288,7 @@ from ASF svn servers - they will remain automatically on the archive servers.
     }
 }
 
-task uploadDocumentationToGroovyWebsite() {
+tasks.register('uploadDocumentationToGroovyWebsite') {
     group = "Post-passed phase"
     description = "Uploads the documentation to the Groovy website server"
     doLast {
@@ -296,7 +307,8 @@ task uploadDocumentationToGroovyWebsite() {
     }
 }
 
-task checkoutGroovyWebsite(dependsOn: uploadDocumentationToGroovyWebsite) {
+tasks.register('checkoutGroovyWebsite') {
+    dependsOn uploadDocumentationToGroovyWebsite
     group = "Post-passed phase"
     description = "Checks out the Groovy website repository"
     doLast {
@@ -307,22 +319,26 @@ task checkoutGroovyWebsite(dependsOn: uploadDocumentationToGroovyWebsite) {
     }
 }
 
-task findGroovyVersions(dependsOn: checkoutGroovyWebsite) {
+tasks.register('findGroovyVersions') {
+    dependsOn checkoutGroovyWebsite
     doLast {
         def sitemapFile = file("$stagingWebsiteDir/site/src/site/sitemap-user.groovy")
         def matcher = sitemapFile.text =~ /(?ism).*groovyDocumentationVersions\(([^)]*)\).*/
         assert matcher[0]
         rootProject.ext.versionsText = matcher[0][1]
-        def majorMinor = { String s -> s.split(/\./).with{ it[0].toInteger() * 100 + it[1].toInteger() } }
+        def majorMinor = { String s -> s.split(/\./).with { it[0].toInteger() * 100 + it[1].toInteger() } }
         def versions = Eval.me(versionsText)
         def relMajorMinor = majorMinor(relVersion)
-        def foundNewer = versions.findAll{ !(it.contains('alpha') || it.contains('beta') || it.contains('rc')) }.collect{ majorMinor(it) }.any{ it > relMajorMinor }
+        def foundNewer = versions.findAll {
+            !(it.contains('alpha') || it.contains('beta') || it.contains('rc'))
+        }.collect { majorMinor(it) }.any { it > relMajorMinor }
         rootProject.ext.newDefault = project.hasProperty('forceDefault') ||
                 (!project.hasProperty('skipDefault') && stableBuild && !foundNewer)
     }
 }
 
-task maybeUpdateDocumentationSymlink(dependsOn: findGroovyVersions) {
+tasks.register('maybeUpdateDocumentationSymlink') {
+    dependsOn findGroovyVersions
     group = "Post-passed phase"
     description = "Changes the symlink to the latest documentation if and only if it's a stable release"
     doLast {
@@ -339,7 +355,8 @@ task maybeUpdateDocumentationSymlink(dependsOn: findGroovyVersions) {
 }
 maybeUpdateDocumentationSymlink.onlyIf{ newDefault }
 
-task updateGroovySitemap(dependsOn: findGroovyVersions) {
+tasks.register('updateGroovySitemap') {
+    dependsOn findGroovyVersions
     group = "Post-passed phase"
     description = "Updates sitemap-user.groovy to include the newly released version and commits the result"
     doLast {
@@ -354,7 +371,8 @@ task updateGroovySitemap(dependsOn: findGroovyVersions) {
 }
 updateGroovySitemap.onlyIf{ releaseBuild }
 
-task pushGroovyWebsite(dependsOn: updateGroovySitemap) {
+tasks.register('pushGroovyWebsite') {
+    dependsOn updateGroovySitemap
     group = "Post-passed phase"
     description = "Pushes the Groovy website so that the new website is published"
     doLast {
@@ -368,7 +386,8 @@ task pushGroovyWebsite(dependsOn: updateGroovySitemap) {
 }
 pushGroovyWebsite.onlyIf{ releaseBuild }
 
-task waitForWebsitePublication(dependsOn: pushGroovyWebsite) {
+tasks.register('waitForWebsitePublication') {
+    dependsOn pushGroovyWebsite
     group = "Post-passed phase"
     description = "Polls the Groovy website to check if the changelog for this version is published"
     doLast {
@@ -381,20 +400,23 @@ task waitForWebsitePublication(dependsOn: pushGroovyWebsite) {
 }
 waitForWebsitePublication.onlyIf{ releaseBuild }
 
-task publishToSDKman(dependsOn: [/*synchronizeWithMavenCentral,*/ publishZipsOnArtifactory, uploadToApacheReleaseServer, waitForWebsitePublication, maybeUpdateDocumentationSymlink, sdkReleaseVersion]) {
+tasks.register('publishToSDKman') {
+    dependsOn([/*synchronizeWithMavenCentral,*/ publishZipsOnArtifactory, uploadToApacheReleaseServer, waitForWebsitePublication, maybeUpdateDocumentationSymlink, sdkReleaseVersion])
     group = "Post-passed phase"
     description = "Publishes the release on SDKman"
 }
 
 sdkDefaultVersion.dependsOn findGroovyVersions
-task makeDefaultOnSDKman(dependsOn: [publishToSDKman, sdkDefaultVersion]) {
+tasks.register('makeDefaultOnSDKman') {
+    dependsOn([publishToSDKman, sdkDefaultVersion])
     group = "Post-passed phase"
     description = "Make it the default version on SDKman"
 }
 makeDefaultOnSDKman.onlyIf{ rootProject.ext.newDefault }
 sdkDefaultVersion.onlyIf{ rootProject.ext.newDefault }
 
-task createNextVersionInJira(dependsOn: [jiraCheckPhase2]) {
+tasks.register('createNextVersionInJira') {
+    dependsOn jiraCheckPhase2
     group = "Post-passed phase"
     description = "Make sure that Jira is ready for the next version on this branch"
     doLast {
@@ -415,7 +437,8 @@ task createNextVersionInJira(dependsOn: [jiraCheckPhase2]) {
     }
 }
 
-task bumpVersionInGit(dependsOn: [findGroovyVersions]) {
+tasks.register('bumpVersionInGit') {
+    dependsOn findGroovyVersions
     group = "Post-passed phase"
     description = "The version in the gradle.properties file in the branch repo should be bumped"
     doLast {
@@ -436,13 +459,14 @@ task bumpVersionInGit(dependsOn: [findGroovyVersions]) {
 }
 bumpVersionInGit.onlyIf{ stableBuild }
 
-task gitTasks(dependsOn: [bumpVersionInGit, jiraCheckPhase2]) { }
+tasks.register('gitTasks') { dependsOn([bumpVersionInGit, jiraCheckPhase2]) }
 
-task jiraTasks(dependsOn: [findGroovyVersions, createNextVersionInJira]) { }
+tasks.register('jiraTasks') { dependsOn([findGroovyVersions, createNextVersionInJira]) }
 
-task sdkmanTasks(dependsOn: [jiraCheckPhase2, findGroovyVersions, makeDefaultOnSDKman]) {}
+tasks.register('sdkmanTasks') { dependsOn([jiraCheckPhase2, findGroovyVersions, makeDefaultOnSDKman]) }
 
-task proposeAnnouncementEmail(dependsOn: [gitTasks, jiraTasks, sdkmanTasks, findGroovyVersions]) {
+tasks.register('proposeAnnouncementEmail') {
+    dependsOn([gitTasks, jiraTasks, sdkmanTasks, findGroovyVersions])
     group = "Post-passed phase"
     description = "Generates an [ANNOUNCE] thread to be tweaked and sent to the dev@, user@ and announce@ mailing lists"
     doLast {
@@ -496,7 +520,8 @@ The Apache Groovy team.
     }
 }
 
-task promptForReleaseUpdater(dependsOn: proposeAnnouncementEmail) {
+tasks.register('promptForReleaseUpdater') {
+    dependsOn proposeAnnouncementEmail
     group = "Post-passed phase"
     description = "Prompts the release manager to update the Apache Release info system"
     doLast {
@@ -509,7 +534,8 @@ If you are not a PMC member, please have a PMC member add this information.
     }
 }
 
-task announceReleaseOnSDKman(dependsOn: [promptForReleaseUpdater, sdkAnnounceVersion]) {
+tasks.register('announceReleaseOnSDKman') {
+    dependsOn([promptForReleaseUpdater, sdkAnnounceVersion])
     group = "Post-passed phase"
     description = "Announces the release on SDKman"
 }
