@@ -20,7 +20,8 @@ svntools {
     password = apachePassword
 }
 
-task checkout(dependsOn: assumesBranch) {
+tasks.register('checkout') {
+    dependsOn assumesBranch
     group = "Pre-vote phase"
     description = "Checks out the Apache Groovy sources (assumes -Pbranch=branch_to_release)"
     // fresh clone may be overkill but take safe option for now unless skipClone specified
@@ -41,7 +42,8 @@ task checkout(dependsOn: assumesBranch) {
     }
 }
 
-task confirmVersion(dependsOn: [assumesPropsSet, checkout]) {
+tasks.register('confirmVersion') {
+    dependsOn([assumesPropsSet, checkout])
     group = "Pre-vote phase"
     description = "Confirm version to release (assumes -PreleaseVersion=version_to_release)"
     doLast {
@@ -56,7 +58,8 @@ task confirmVersion(dependsOn: [assumesPropsSet, checkout]) {
 }
 
 // use Exec rather than GradleBuild to avoid any issues between gradle versions
-task checkCompatibility(type: Exec, dependsOn: [assumesBranch, checkout]) {
+tasks.register('checkCompatibility', Exec) {
+    dependsOn([assumesBranch, checkout])
     workingDir stagingDir
     def theArgs = []
     if (Os.isFamily(Os.FAMILY_WINDOWS)) {
@@ -68,7 +71,8 @@ task checkCompatibility(type: Exec, dependsOn: [assumesBranch, checkout]) {
     commandLine theArgs
 }
 
-task jiraPrecheck(dependsOn: assumesRelVersion) {
+tasks.register('jiraPrecheck') {
+    dependsOn assumesRelVersion
     doLast {
         def prefix = 'https://issues.apache.org/jira/rest/api/2'
         def client = HttpUtil.newClient()
@@ -97,7 +101,8 @@ task jiraPrecheck(dependsOn: assumesRelVersion) {
     }
 }
 
-task createReleaseBranch(dependsOn: [assumesPropsSet, jiraPrecheck, confirmVersion]) {
+tasks.register('createReleaseBranch') {
+    dependsOn([assumesPropsSet, jiraPrecheck, confirmVersion])
     group = "Pre-vote phase"
     description = "Creates a release branch"
     doLast {
@@ -107,7 +112,8 @@ task createReleaseBranch(dependsOn: [assumesPropsSet, jiraPrecheck, confirmVersi
     }
 }
 
-task updateVersionProperties(dependsOn: [assumesPropsSet, createReleaseBranch]) {
+tasks.register('updateVersionProperties') {
+    dependsOn([assumesPropsSet, createReleaseBranch])
     group = "Pre-vote phase"
     description = "Promotes versions to non SNAPSHOT in gradle.properties and commits the result"
     doLast {
@@ -128,7 +134,8 @@ task updateVersionProperties(dependsOn: [assumesPropsSet, createReleaseBranch]) 
 }
 
 // use Exec rather the GradleBuild to ensure we use the correct gradle version for the groovy version being built
-task buildAndUploadStep1(type: Exec, dependsOn: [assumesPropsSet, updateVersionProperties, checkCompatibility]) {
+tasks.register('buildAndUploadStep1', Exec) {
+    dependsOn([assumesPropsSet, updateVersionProperties, checkCompatibility])
     group = "Pre-vote phase"
     description = "Builds Apache Groovy and publishes the Maven artifacts to the Artifactory staging repository"
     workingDir stagingDir
@@ -157,51 +164,57 @@ task buildAndUploadStep1(type: Exec, dependsOn: [assumesPropsSet, updateVersionP
 }
 
 // use Exec rather the GradleBuild to ensure we use the correct gradle version for the groovy version being built
-task uploadStep2(type: Exec, dependsOn: [buildAndUploadStep1]) {
+tasks.register('uploadStep2', Exec) {
+    dependsOn buildAndUploadStep1
     group = "Pre-vote phase"
     description = "Publishes the Maven artifacts to the Apache staging repository"
     workingDir stagingDir
 //    if (apacheGroupId) {
-        ext.theArgs = []
-        if (Os.isFamily(Os.FAMILY_WINDOWS)) {
-            theArgs += ['cmd', '/C', 'gradlew.bat']
-        } else {
-            theArgs += ['sh', './gradlew']
-        }
+    ext.theArgs = []
+    if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+        theArgs += ['cmd', '/C', 'gradlew.bat']
+    } else {
+        theArgs += ['sh', './gradlew']
+    }
 //        if (!relVersion.startsWith('2.4')) {
-            theArgs << '--no-build-cache'
+    theArgs << '--no-build-cache'
 //        }
-        theArgs += ['publishAllPublicationsToApacheRepository']
-        commandLine theArgs
+    theArgs += ['publishAllPublicationsToApacheRepository']
+    commandLine theArgs
 //    }
 }
 uploadStep2.onlyIf{ apacheGroupId }
 
-task cleanSvnDevWorkspace(type: Delete, dependsOn: [assumesBranch, uploadStep2]) {
+tasks.register('cleanSvnDevWorkspace', Delete) {
+    dependsOn([assumesBranch, uploadStep2])
     delete devWorkspaceRoot
 }
 
-task prepareSvnDevWorkspace(type: SvnCheckout, dependsOn: [assumesBranch, cleanSvnDevWorkspace]) {
+tasks.register('prepareSvnDevWorkspace', SvnCheckout) {
+    dependsOn([assumesBranch, cleanSvnDevWorkspace])
     svnUrl = "https://dist.apache.org/repos/dist/dev/groovy"
     workspaceDir = devWorkspaceRoot
     depth = SvnDepth.FILES // slightly more efficient if we have two concurrent releases (e.g. 2.4.latest, 2.5.0)
 }
 
-task copySvnDistro(type: Copy, dependsOn: [assumesPropsSet, prepareSvnDevWorkspace]) {
+tasks.register('copySvnDistro', Copy) {
+    dependsOn([assumesPropsSet, prepareSvnDevWorkspace])
     description = "Creates the required tree structure for distribution"
     from("$distParentDir/distributions")
     into "$devWorkspace/distribution"
     exclude 'apache-groovy-src-*'
 }
 
-task copySvnSources(type: Copy, dependsOn: [assumesPropsSet, prepareSvnDevWorkspace]) {
+tasks.register('copySvnSources', Copy) {
+    dependsOn([assumesPropsSet, prepareSvnDevWorkspace])
     description = "Creates the required tree structure for sources"
     from("$distParentDir/distributions")
     into "$devWorkspace/sources"
     include 'apache-groovy-src-*'
 }
 
-task createChecksums(dependsOn: [assumesPropsSet, copySvnDistro, copySvnSources]) {
+tasks.register('createChecksums') {
+    dependsOn([assumesPropsSet, copySvnDistro, copySvnSources])
     group = "Pre-vote phase"
     description = "Creates SHA-256 checksums for all artifacts"
     doLast {
@@ -213,19 +226,22 @@ task createChecksums(dependsOn: [assumesPropsSet, copySvnDistro, copySvnSources]
     }
 }
 
-task addSvnDevFiles(type: SvnAdd, dependsOn: [assumesPropsSet, createChecksums]) {
+tasks.register('addSvnDevFiles', SvnAdd) {
+    dependsOn([assumesPropsSet, createChecksums])
     description = "Adds the changed files to svn"
     add devWorkspace
     recursive true
 }
 
-task commitAddToDevSvn(type: SvnCommit, dependsOn: [assumesPropsSet, addSvnDevFiles]) {
+tasks.register('commitAddToDevSvn', SvnCommit) {
+    dependsOn([assumesPropsSet, addSvnDevFiles])
     source << devWorkspace
     recursive = true
     commitMessage = "New version $branch $relVersion added to staging area"
 }
 
-task checkDevWorkspaceVersion(type: SvnVersion, dependsOn: [assumesPropsSet, commitAddToDevSvn]) {
+tasks.register('checkDevWorkspaceVersion', SvnVersion) {
+    dependsOn([assumesPropsSet, commitAddToDevSvn])
     sourcePath = devWorkspace
     doLast {
         def f = new File(devWorkspace)
@@ -233,7 +249,8 @@ task checkDevWorkspaceVersion(type: SvnVersion, dependsOn: [assumesPropsSet, com
     }
 }
 
-task createAndPushTag(dependsOn: [assumesPropsSet, checkDevWorkspaceVersion]) {
+tasks.register('createAndPushTag') {
+    dependsOn([assumesPropsSet, checkDevWorkspaceVersion])
     group = "Pre-vote phase"
     description = "Creates a release tag and pushes it to the Apache Git repository"
     doLast {
@@ -261,7 +278,8 @@ task createAndPushTag(dependsOn: [assumesPropsSet, checkDevWorkspaceVersion]) {
     }
 }
 
-task releaseOnJira(dependsOn: [assumesRelVersion, jiraPrecheck, createAndPushTag]) {
+tasks.register('releaseOnJira') {
+    dependsOn([assumesRelVersion, jiraPrecheck, createAndPushTag])
     group = "Pre-vote phase"
     description = "Releases the version on JIRA"
     doLast {
@@ -273,7 +291,8 @@ task releaseOnJira(dependsOn: [assumesRelVersion, jiraPrecheck, createAndPushTag
     }
 }
 
-task prepareVoteThread(dependsOn: [assumesPropsSet, releaseOnJira]) {
+tasks.register('prepareVoteThread') {
+    dependsOn([assumesPropsSet, releaseOnJira])
     group = "Pre-vote phase"
     description = "Generates a [VOTE] thread to be tweaked and sent to the dev@ mailing list"
     doLast {
