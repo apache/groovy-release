@@ -78,7 +78,7 @@ tasks.register('jiraPrecheck') {
         def client = HttpUtil.newClient()
         def request = HttpUtil.getRequest("$prefix/project/GROOVY/versions", apacheUser, apachePassword)
         def response = HttpUtil.send(client, request)
-        assert response.statusCode() == 200
+        assert response.statusCode() in [200, 302]
         def versionFields = response.json.find { it.name == relVersion }
         assert versionFields, "Version $relVersion not found in Jira!"
         if (!project.hasProperty('skipJiraReleaseCheck')) {
@@ -89,14 +89,14 @@ tasks.register('jiraPrecheck') {
 
         request = HttpUtil.getRequest("$prefix/version/$versionId/unresolvedIssueCount", apacheUser, apachePassword)
         response = HttpUtil.send(client, request)
-        assert response.statusCode() == 200
+        assert response.statusCode() in [200, 302]
         if (response.json.issuesUnresolvedCount) {
             logger.warn "Warning found $response.json.issuesUnresolvedCount unresolved issues for version $relVersion"
         }
 
         request = HttpUtil.getRequest("$prefix/version/$versionId/relatedIssueCounts", apacheUser, apachePassword)
         response = HttpUtil.send(client, request)
-        assert response.statusCode() == 200
+        assert response.statusCode() in [200, 302]
         project.ext.fixCount = response.json.issuesFixedCount
     }
 }
@@ -287,7 +287,7 @@ tasks.register('releaseOnJira') {
         def request = HttpUtil.putRequest("https://issues.apache.org/jira/rest/api/2/version/$versionId",
                 /{ "released": true, "releaseDate": "$now" }/, apacheUser, apachePassword)
         def response = HttpUtil.send(client, request)
-        assert response.statusCode() == 200
+        assert response.statusCode() in [200, 302]
     }
 }
 

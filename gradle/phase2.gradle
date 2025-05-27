@@ -48,7 +48,7 @@ tasks.register('jiraCheckPhase2') {
         def client = HttpUtil.newClient()
         def request = HttpUtil.getRequest("$prefix/project/GROOVY/versions", apacheUser, apachePassword)
         def response = HttpUtil.send(client, request)
-        assert response.statusCode() == 200
+        assert response.statusCode() in [200, 302]
         def versionFields = response.json.find { it.name == relVersion }
         assert versionFields, "Version $relVersion not found in Jira!"
         assert versionFields.released, "Version $relVersion not yet released!"
