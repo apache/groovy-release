@@ -49,6 +49,7 @@ tasks.register('jiraCheckPhase2') {
         def request = HttpUtil.getRequest("$prefix/project/GROOVY/versions", apacheUser, apachePassword)
         def response = HttpUtil.send(client, request)
         assert response.statusCode() in [200, 302]
+        println response?.json*.subMap(['name', 'id', 'releaseDate']).sort{ a, b -> b.releaseDate <=> a.releaseDate }.groupBy{ it.name[0..2] }.findAll{ it.key > '2.3' }.collect{ e -> e.value.take(2) }.sum().sort{ a, b -> b.name[0..2] <=> a.name[0..2] }.join('\n')
         def versionFields = response.json.find { it.name == relVersion }
         assert versionFields, "Version $relVersion not found in Jira!"
         assert versionFields.released, "Version $relVersion not yet released!"
