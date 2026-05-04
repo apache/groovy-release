@@ -126,6 +126,19 @@ tasks.register('setupModules') {
                 'groovy-typecheckers': type2
         ]
     }
+    if (relVersion[0] >= '6') {
+        modules << [
+                'groovy-concurrent-java': type2,
+                'groovy-csv': type2,
+                'groovy-grape-ivy': type2,
+                'groovy-grape-maven': type2,
+                'groovy-http-builder': type2,
+                'groovy-markdown': type2,
+                'groovy-reactor': type2,
+                'groovy-rxjava': type2,
+                'groovy-test-junit6': type2
+        ]
+    }
 }
 
 tasks.register('zipFromArtifactory') {
