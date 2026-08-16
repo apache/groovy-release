@@ -128,6 +128,7 @@ tasks.register('setupModules') {
     }
     if (relVersion[0] >= '6') {
         modules << [
+                'groovy-callsite': type2,
                 'groovy-concurrent-java': type2,
                 'groovy-csv': type2,
                 'groovy-grape-ivy': type2,
