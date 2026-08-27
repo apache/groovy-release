@@ -67,6 +67,37 @@ tasks.register('jiraCheckPhase2') {
     }
 }
 
+// The vote has passed, so the staging repository closed in phase1 can be released - Nexus 2 calls
+// this staging action "promote". Releasing publishes the artifacts into the Apache release repo
+// from where they sync to Maven Central; the staging repo itself is dropped once released.
+// We use the bulk endpoint here (what the Release button in the Nexus UI uses) - the per-profile
+// promote DTO has no autoDropAfterRelease field and XStream rejects the whole body if we send it.
+tasks.register('releaseStagingRepo') {
+    dependsOn([assumesRelVersion, jiraCheckPhase2])
+    group = "Post-passed phase"
+    description = "Releases the closed Nexus staging repository holding the Maven artifacts"
+    doLast {
+        def client = HttpUtil.newClient()
+        def staging = NexusUtil.stagingBase(nexusBase)
+        def groupId = apacheGroupId ? 'org.apache.groovy' : 'org.codehaus.groovy'
+        def repo = NexusUtil.findRepo(client, nexusBase, apacheUser, apachePassword, 'closed',
+                groupId, relVersion, project.findProperty('stagingRepoId'))
+
+        if (repo.type == 'closed') {
+            println "Releasing staging repository $repo.repositoryId ..."
+            def body = /{"data":{"stagedRepositoryIds":["$repo.repositoryId"],"description":"Apache Groovy $relVersion","autoDropAfterRelease":true}}/
+            def response = HttpUtil.send(client, HttpUtil.postJsonRequest("$staging/bulk/promote", body, apacheUser, apachePassword))
+            assert response.statusCode() in [200, 201], "Release request failed: ${response.statusCode()} ${response.body()}"
+            def released = NexusUtil.awaitTransition(client, nexusBase, apacheUser, apachePassword, repo.repositoryId, 'released')
+            assert released, "Timed out waiting for $repo.repositoryId to be released - please check manually"
+        } else {
+            println "Staging repository $repo.repositoryId is already $repo.type"
+        }
+        println "Artifacts should appear on Maven Central within a few hours - the checkMavenStatus task confirms it"
+    }
+}
+releaseStagingRepo.onlyIf{ apacheGroupId && releaseBuild }
+
 /*
 task promoteJarsOnArtifactory(dependsOn: jiraCheckPhase2) {
     group = "Post-passed phase"
@@ -466,8 +497,10 @@ tasks.register('jiraTasks') { dependsOn([findGroovyVersions, createNextVersionIn
 
 tasks.register('sdkmanTasks') { dependsOn([jiraCheckPhase2, findGroovyVersions, makeDefaultOnSDKman]) }
 
+tasks.register('mavenTasks') { dependsOn([jiraCheckPhase2, releaseStagingRepo]) }
+
 tasks.register('proposeAnnouncementEmail') {
-    dependsOn([gitTasks, jiraTasks, sdkmanTasks, findGroovyVersions])
+    dependsOn([gitTasks, jiraTasks, sdkmanTasks, mavenTasks, findGroovyVersions])
     group = "Post-passed phase"
     description = "Generates an [ANNOUNCE] thread to be tweaked and sent to the dev@, user@ and announce@ mailing lists"
     doLast {

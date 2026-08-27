@@ -22,6 +22,27 @@ class HttpUtil {
                 .build()
     }
 
+    // Nexus returns XML unless we explicitly ask for JSON
+    static HttpRequest getJsonRequest(url, user, password) {
+        HttpRequest.newBuilder()
+                .uri(new URI(url))
+                .header('Authorization', 'Basic ' + "$user:$password".getBytes('iso-8859-1').encodeBase64())
+                .header('Accept', 'application/json')
+                .GET()
+                .build()
+    }
+
+    static HttpRequest postJsonRequest(url, String json, user, password) {
+        def body = HttpRequest.BodyPublishers.ofString(json)
+        HttpRequest.newBuilder()
+                .uri(new URI(url))
+                .header('Authorization', 'Basic ' + "$user:$password".getBytes('iso-8859-1').encodeBase64())
+                .header('Accept', 'application/json')
+                .header('Content-Type', 'application/json')
+                .POST(body)
+                .build()
+    }
+
     static HttpRequest headRequest(url) {
         HttpRequest.newBuilder()
                 .uri(new URI(url))

@@ -14,6 +14,9 @@ buildscript {
 apply plugin: at.bxm.gradleplugins.svntools.SvnToolsPlugin
 
 ext.grgitClass = org.ajoberstar.grgit.Grgit
+ext.nexusBase = 'https://repository.apache.org'
+// set by closeStagingRepo, referenced by prepareVoteThread
+ext.stagingRepoUrl = null
 
 svntools {
     username = apacheUser
@@ -186,8 +189,38 @@ tasks.register('uploadStep2', Exec) {
 }
 uploadStep2.onlyIf{ apacheGroupId }
 
+// Gradle's maven-publish plugin just PUTs to the Nexus implicit staging endpoint - it has no notion
+// of the staging repository Nexus creates behind the scenes, so we close it via the Nexus 2 staging API.
+tasks.register('closeStagingRepo') {
+    dependsOn([assumesPropsSet, uploadStep2])
+    group = "Pre-vote phase"
+    description = "Closes the Nexus staging repository holding the uploaded Maven artifacts"
+    doLast {
+        def client = HttpUtil.newClient()
+        def staging = NexusUtil.stagingBase(nexusBase)
+        def groupId = apacheGroupId ? 'org.apache.groovy' : 'org.codehaus.groovy'
+        def repo = NexusUtil.findRepo(client, nexusBase, apacheUser, apachePassword, 'open',
+                groupId, relVersion, project.findProperty('stagingRepoId'))
+
+        if (repo.type == 'open') {
+            println "Closing staging repository $repo.repositoryId ..."
+            def body = /{"data":{"stagedRepositoryId":"$repo.repositoryId","description":"Apache Groovy $relVersion"}}/
+            def response = HttpUtil.send(client, HttpUtil.postJsonRequest("$staging/profiles/$repo.profileId/finish", body, apacheUser, apachePassword))
+            assert response.statusCode() in [200, 201], "Close request failed: ${response.statusCode()} ${response.body()}"
+            def closed = NexusUtil.awaitTransition(client, nexusBase, apacheUser, apachePassword, repo.repositoryId, 'closed')
+            assert closed, "Timed out waiting for $repo.repositoryId to close - please check manually"
+        } else {
+            println "Staging repository $repo.repositoryId is already $repo.type"
+        }
+
+        project.ext.stagingRepoUrl = repo.repositoryURI ?: "$nexusBase/content/repositories/$repo.repositoryId"
+        println "Staging repository: $stagingRepoUrl"
+    }
+}
+closeStagingRepo.onlyIf{ apacheGroupId && releaseBuild }
+
 tasks.register('cleanSvnDevWorkspace', Delete) {
-    dependsOn([assumesBranch, uploadStep2])
+    dependsOn([assumesBranch, closeStagingRepo])
     delete devWorkspaceRoot
 }
 
@@ -317,6 +350,7 @@ Tag commit id: $tagId
 The artifacts to be voted on are located as follows (r$svnVersion.maxRevisionNumber).
 Source release: https://dist.apache.org/repos/dist/dev/groovy/$relVersion/sources
 Convenience binaries: https://dist.apache.org/repos/dist/dev/groovy/$relVersion/distribution
+Temporary artifacts: ${stagingRepoUrl ?: 'N/A (staging repository not closed)'}
 
 Release artifacts are signed with a key from the following file:
 https://dist.apache.org/repos/dist/release/groovy/KEYS
